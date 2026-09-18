@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JoJo Artist Arena — Roster Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ===== HEADER / BARRA SUPERIOR ===== -->
+  <header class="topbar">
+    <div class="topbar__brand">
+      <div class="topbar__crest" aria-hidden="true">★</div>
+      <div class="topbar__titles">
+        <h1 class="topbar__title">JoJo Artist Arena</h1>
+        <p class="topbar__subtitle">Roster Manager &mdash; Simulador de Combate</p>
+      </div>
+    </div>
+
+    <div class="topbar__stats">
+      <span class="participants-counter" id="participantsCounter">Participantes: 0 / 50</span>
+    </div>
+
+    <nav class="topbar__actions">
+      <button type="button" class="btn btn--gold" id="btnAddNew">＋ Añadir Nuevo Stand</button>
+      <button type="button" class="btn btn--ghost" id="btnExport">⇩ Descargar Roster (JSON)</button>
+      <button type="button" class="btn btn--ghost" id="btnImportTrigger">⇧ Cargar Roster (JSON)</button>
+      <button type="button" class="btn btn--danger" id="btnClearAll">✕ Limpiar Todo</button>
+      <button type="button" class="btn btn--ready" id="btnReadyDraw">⚔ Entrar a la Arena</button>
+      <input type="file" id="importFileInput" accept="application/json,.json" hidden>
+    </nav>
+  </header>
+
+  <!-- ===== GALERÍA ===== -->
+  <main class="gallery-wrap">
+    <section class="gallery" id="gallery" aria-label="Galería de Stands">
+      <!-- Las tarjetas se inyectan dinámicamente desde app.js -->
+    </section>
+
+    <div class="empty-state" id="emptyState">
+      <div class="empty-state__glyph">✧</div>
+      <h2>Aún no hay Stands en el roster</h2>
+      <p>Pulsa <strong>«Añadir Nuevo Stand»</strong> para invocar al primer artista de la arena.</p>
+    </div>
+  </main>
+
+    <!-- ===== VISTA: TORNEO Y SORTEO ===== -->
+    <section class="tournament" id="tournamentView" hidden aria-label="Torneo y Sorteo">
+
+        <!-- Barra superior de la vista torneo -->
+        <div class="tournament__topbar">
+          <button type="button" class="btn btn--ghost" id="btnBackToRoster">← Volver al Roster</button>
+          <h2 class="tournament__title">Sala de Emparejamiento</h2>
+          <div class="tournament__spacer"></div>
+        </div>
+    
+        <!-- ===== PANEL DE ESCENARIOS ===== -->
+        <div class="stage-manager">
+          <header class="stage-manager__header">
+            <h3 class="stage-manager__title">Escenarios Personalizados</h3>
+            <button type="button" class="btn btn--gold" id="btnAddStage">＋ Nuevo Escenario</button>
+          </header>
+    
+          <div class="stage-manager__empty" id="stageEmpty">
+            <span class="stage-manager__glyph">🏙</span>
+            <p>Aún no hay escenarios. El sorteo usará un fondo oscuro por defecto.</p>
+          </div>
+    
+          <div class="stage-carousel" id="stageCarousel" hidden>
+            <!-- Tarjetas de escenario inyectadas por app.js -->
+          </div>
+        </div>
+    
+        <!-- ===== ZONA DE RULETA ===== -->
+        <div class="roulette-zone" id="rouletteZone">
+    
+          <!-- Ruleta superior: Luchador 1 -->
+          <div class="roulette-slot" data-slot="p1">
+            <div class="roulette-slot__label">Luchador 1</div>
+            <div class="roulette-slot__frame tarot-frame">
+              <div class="roulette-slot__reel" id="reelP1">
+                <span class="roulette-slot__glyph">?</span>
+              </div>
+            </div>
+          </div>
+    
+          <!-- Columna central: controles -->
+          <div class="roulette-center">
+            <div class="roulette-emblem" id="rouletteEmblem">運命</div>
+            <button type="button" class="btn btn--gold btn--roulette" id="btnSpinRoulette">
+              🎰 ¡GIRAR RULETA DE DESTINO!
+            </button>
+            <div class="roulette-onoma" id="rouletteOnoma" hidden>DODODO...</div>
+          </div>
+    
+          <!-- Ruleta superior: Luchador 2 -->
+          <div class="roulette-slot" data-slot="p2">
+            <div class="roulette-slot__label">Luchador 2</div>
+            <div class="roulette-slot__frame tarot-frame">
+              <div class="roulette-slot__reel" id="reelP2">
+                <span class="roulette-slot__glyph">?</span>
+              </div>
+            </div>
+          </div>
+        </div>
+    
+        <!-- Ruleta inferior: Escenario -->
+        <div class="roulette-stage" id="rouletteStage">
+          <div class="roulette-stage__label">Escenario de Combate</div>
+          <div class="roulette-stage__frame">
+            <div class="roulette-stage__reel" id="reelStage">
+              <span class="roulette-stage__glyph">?</span>
+            </div>
+          </div>
+        </div>
+    
+        <!-- ===== PANTALLA VERSUS ===== -->
+        <div class="versus-screen" id="versusScreen" hidden>
+          <div class="versus-screen__stage-bg" id="versusStageBg"></div>
+          <div class="versus-screen__overlay"></div>
+    
+          <div class="versus-screen__content">
+            <!-- Lado izquierdo -->
+            <article class="versus-fighter" data-side="left">
+              <div class="versus-fighter__frame tarot-frame">
+                <img class="versus-fighter__img" id="versusImgP1" alt="">
+              </div>
+              <div class="versus-fighter__info">
+                <h3 class="versus-fighter__name" id="versusNameP1">—</h3>
+                <p class="versus-fighter__owner" id="versusOwnerP1">—</p>
+                <div class="versus-fighter__tags">
+                  <span class="tag tag--hp" id="versusHpP1">♥ —</span>
+                  <span class="tag tag--affinity" id="versusAffP1">—</span>
+                </div>
+                <div class="versus-fighter__bonus" id="versusBonusP1" hidden>¡BONUS DE TERRENO ACTIVADO!</div>
+              </div>
+            </article>
+    
+            <!-- Emblema VS central -->
+            <div class="versus-emblem" aria-hidden="true">
+              <span class="versus-emblem__glyph">VS</span>
+            </div>
+    
+            <!-- Lado derecho -->
+            <article class="versus-fighter" data-side="right">
+              <div class="versus-fighter__frame tarot-frame">
+                <img class="versus-fighter__img" id="versusImgP2" alt="">
+              </div>
+              <div class="versus-fighter__info">
+                <h3 class="versus-fighter__name" id="versusNameP2">—</h3>
+                <p class="versus-fighter__owner" id="versusOwnerP2">—</p>
+                <div class="versus-fighter__tags">
+                  <span class="tag tag--hp" id="versusHpP2">♥ —</span>
+                  <span class="tag tag--affinity" id="versusAffP2">—</span>
+                </div>
+                <div class="versus-fighter__bonus" id="versusBonusP2" hidden>¡BONUS DE TERRENO ACTIVADO!</div>
+              </div>
+            </article>
+          </div>
+    
+          <!-- Escenario anunciado -->
+          <div class="versus-stage-badge" id="versusStageBadge">
+            <span class="versus-stage-badge__label">Escenario</span>
+            <span class="versus-stage-badge__name" id="versusStageName">—</span>
+            <span class="versus-stage-badge__mod" id="versusStageMod">—</span>
+          </div>
+    
+          <!-- Acciones -->
+          <div class="versus-actions">
+            <button type="button" class="btn btn--ghost" id="btnRespin">↻ Volver a Girar</button>
+            <button type="button" class="btn btn--gold btn--fight" id="btnStartFight">⚔ ¡INICIAR COMBATE!</button>
+          </div>
+        </div>
+      </section>
+
+        <!-- ===== VISTA: ARENA DE BATALLA (MÓDULO 3) ===== -->
+  <section class="battle" id="battleView" hidden aria-label="Arena de Batalla">
+
+    <!-- Fondo del escenario -->
+    <div class="battle__bg" id="battleBg"></div>
+    <div class="battle__bg-overlay"></div>
+
+    <!-- Barra superior de batalla -->
+    <div class="battle__topbar">
+      <button type="button" class="btn btn--ghost" id="btnExitBattle">← Salir de la Arena</button>
+      <div class="battle__stage-name" id="battleStageName">—</div>
+      <div class="battle__turn-indicator" id="battleTurnIndicator">Turno 1</div>
+    </div>
+
+    <!-- Combatientes -->
+    <div class="battle__arena">
+
+      <!-- Luchador 1 -->
+      <article class="battle-fighter" data-side="left" id="fighterP1">
+        <div class="battle-fighter__hud">
+          <div class="battle-fighter__names">
+            <h3 class="battle-fighter__name" id="battleNameP1">—</h3>
+            <p class="battle-fighter__owner" id="battleOwnerP1">—</p>
+          </div>
+          <span class="battle-fighter__affinity" id="battleAffP1">—</span>
+          <div class="hp-bar" data-side="p1">
+            <div class="hp-bar__fill" id="hpFillP1"></div>
+            <div class="hp-bar__text" id="hpTextP1">0 / 0 HP</div>
+          </div>
+          <div class="battle-fighter__status" id="statusP1"></div>
+        </div>
+        <div class="battle-fighter__sprite-wrap" id="spriteWrapP1">
+          <img class="battle-fighter__sprite" id="battleSpriteP1" alt="">
+          <div class="battle-fighter__sprite-fallback" id="spriteFallbackP1">🂠</div>
+          <div class="impact-flash" id="impactFlashP1"></div>
+        </div>
+      </article>
+
+      <!-- Columna central: emblema VS + cooldowns -->
+      <div class="battle__center">
+        <div class="battle__vs">VS</div>
+        <div class="battle__round-display" id="battleRoundDisplay">Ronda I</div>
+      </div>
+
+      <!-- Luchador 2 -->
+      <article class="battle-fighter" data-side="right" id="fighterP2">
+        <div class="battle-fighter__hud">
+          <div class="battle-fighter__names">
+            <h3 class="battle-fighter__name" id="battleNameP2">—</h3>
+            <p class="battle-fighter__owner" id="battleOwnerP2">—</p>
+          </div>
+          <span class="battle-fighter__affinity" id="battleAffP2">—</span>
+          <div class="hp-bar" data-side="p2">
+            <div class="hp-bar__fill" id="hpFillP2"></div>
+            <div class="hp-bar__text" id="hpTextP2">0 / 0 HP</div>
+          </div>
+          <div class="battle-fighter__status" id="statusP2"></div>
+        </div>
+        <div class="battle-fighter__sprite-wrap" id="spriteWrapP2">
+          <img class="battle-fighter__sprite" id="battleSpriteP2" alt="">
+          <div class="battle-fighter__sprite-fallback" id="spriteFallbackP2">🂠</div>
+          <div class="impact-flash" id="impactFlashP2"></div>
+        </div>
+      </article>
+    </div>
+
+    <!-- Panel de acciones + Battle Log -->
+    <div class="battle__bottom">
+
+      <!-- Panel de acciones -->
+      <div class="battle-actions" id="battleActions">
+        <div class="battle-actions__header">
+          <span class="battle-actions__turn" id="turnLabel">Turno de —</span>
+          <span class="battle-actions__timer" id="turnTimer"></span>
+        </div>
+
+        <div class="battle-actions__grid">
+          <button type="button" class="action-btn action-btn--basic" id="btnBasicAttack">
+            <span class="action-btn__icon">⚔</span>
+            <span class="action-btn__name">Ataque Básico</span>
+            <span class="action-btn__meta" id="basicAttackMeta">— daño</span>
+          </button>
+
+          <!-- Las 3 habilidades se inyectan dinámicamente -->
+          <button type="button" class="action-btn action-btn--skill" data-skill-index="0" id="skillBtn0" disabled>
+            <span class="action-btn__icon">Ⅰ</span>
+            <span class="action-btn__name" id="skillName0">Habilidad I</span>
+            <span class="action-btn__meta" id="skillMeta0">—</span>
+          </button>
+
+          <button type="button" class="action-btn action-btn--skill" data-skill-index="1" id="skillBtn1" disabled>
+            <span class="action-btn__icon">Ⅱ</span>
+            <span class="action-btn__name" id="skillName1">Habilidad II</span>
+            <span class="action-btn__meta" id="skillMeta1">—</span>
+          </button>
+
+          <button type="button" class="action-btn action-btn--skill" data-skill-index="2" id="skillBtn2" disabled>
+            <span class="action-btn__icon">Ⅲ</span>
+            <span class="action-btn__name" id="skillName2">Habilidad III</span>
+            <span class="action-btn__meta" id="skillMeta2">—</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Battle Log -->
+      <aside class="battle-log" aria-label="Registro de batalla">
+        <header class="battle-log__header">
+          <span class="battle-log__title">Registro de Batalla</span>
+        </header>
+        <div class="battle-log__stream" id="battleLogStream" role="log" aria-live="polite"></div>
+      </aside>
+    </div>
+
+    <!-- Overlay de transición de turno -->
+    <div class="turn-banner" id="turnBanner" hidden>
+      <span class="turn-banner__text" id="turnBannerText">TURNO DE —</span>
+    </div>
+  </section>
+
+  <!-- ===== MODAL FORMULARIO ===== -->
+  <div class="modal-backdrop" id="modalBackdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <header class="modal__header">
+        <h2 class="modal__title" id="modalTitle">Nuevo Stand</h2>
+        <button type="button" class="modal__close" id="btnCloseModal" aria-label="Cerrar">✕</button>
+      </header>
+
+      <form class="modal__form" id="standForm" novalidate>
+
+        <!-- ===== COLUMNA IZQUIERDA: VISTA PREVIA TAROT ===== -->
+        <aside class="form__preview-col">
+          <div class="tarot-preview" id="tarotPreview">
+            <div class="tarot-preview__inner">
+              <img id="previewImage" alt="Vista previa del Stand" hidden>
+              <div class="tarot-preview__placeholder" id="previewPlaceholder">
+                <span class="tarot-preview__icon">🂠</span>
+                <span class="tarot-preview__hint">PNG transparente<br>cuerpo entero</span>
+              </div>
+            </div>
+            <div class="tarot-preview__frame"></div>
+          </div>
+
+          <label class="file-drop" for="imageInput">
+            <input type="file" id="imageInput" accept="image/png,image/webp,image/jpeg" hidden>
+            <span class="file-drop__icon">⇪</span>
+            <span class="file-drop__label">Subir imagen PNG</span>
+            <span class="file-drop__hint">Fondo transparente recomendado</span>
+          </label>
+        </aside>
+
+        <!-- ===== COLUMNA DERECHA: CAMPOS ===== -->
+        <div class="form__fields-col">
+
+          <fieldset class="form__group">
+            <legend>Identidad</legend>
+
+            <div class="form__row">
+              <label class="field">
+                <span class="field__label">Nombre del Artista / Dueño</span>
+                <input type="text" id="artistName" name="artistName" maxlength="60" required placeholder="Ej. Jotaro Kujo">
+              </label>
+
+              <label class="field">
+                <span class="field__label">Nombre del Stand</span>
+                <input type="text" id="standName" name="standName" maxlength="60" required placeholder="Ej. Star Platinum">
+              </label>
+            </div>
+
+            <div class="form__row">
+              <label class="field">
+                <span class="field__label">Tipo de Afinidad</span>
+                <label class="field">
+                    <span class="field__label">Tipo de Afinidad</span>
+                    <select id="affinity" name="affinity" required>
+                      <option value="Físico">Físico</option>
+                      <option value="Fuego">Fuego</option>
+                      <option value="Agua">Agua</option>
+                      <option value="Hielo">Hielo</option>
+                      <option value="Electricidad">Electricidad</option>
+                      <option value="Magnetismo">Magnetismo</option>
+                      <option value="Tiempo">Tiempo</option>
+                      <option value="Gravedad">Gravedad</option>
+                      <option value="Veneno">Veneno</option>
+                      <option value="__custom__">＋ Otra (Personalizada)…</option>
+                    </select>
+                  </label>
+                  
+                  <label class="field" id="customAffinityField" hidden>
+                    <span class="field__label">Nombre de la afinidad personalizada</span>
+                    <input type="text" id="customAffinityInput" maxlength="24"
+                           placeholder="Ej. Arena, Sombras, Sonido, Hilos…">
+                    <span class="field__hint">Se guardará en tu lista de afinidades personalizadas.</span>
+                  </label>
+              </label>
+
+              <label class="field">
+                <span class="field__label">Grito de Batalla <em>(opcional)</em></span>
+                <input type="text" id="battleCry" name="battleCry" maxlength="40" placeholder="Ej. ¡ORA ORA ORA!">
+              </label>
+            </div>
+          </fieldset>
+
+          <fieldset class="form__group">
+            <legend>Parámetros Canónicos del Stand</legend>
+
+            <div class="stats-grid">
+              <label class="field field--stat">
+                <span class="field__label">Poder Destructivo</span>
+                <select id="statPower" data-stat="power">
+                  <option value="A">A</option><option value="B" selected>B</option>
+                  <option value="C">C</option><option value="D">D</option><option value="E">E</option>
+                </select>
+              </label>
+
+              <label class="field field--stat">
+                <span class="field__label">Velocidad</span>
+                <select id="statSpeed" data-stat="speed">
+                  <option value="A">A</option><option value="B" selected>B</option>
+                  <option value="C">C</option><option value="D">D</option><option value="E">E</option>
+                </select>
+              </label>
+
+              <label class="field field--stat">
+                <span class="field__label">Alcance</span>
+                <select id="statRange" data-stat="range">
+                  <option value="A">A</option><option value="B" selected>B</option>
+                  <option value="C">C</option><option value="D">D</option><option value="E">E</option>
+                </select>
+              </label>
+
+              <label class="field field--stat">
+                <span class="field__label">Durabilidad</span>
+                <select id="statDurability" data-stat="durability">
+                  <option value="A">A</option><option value="B" selected>B</option>
+                  <option value="C">C</option><option value="D">D</option><option value="E">E</option>
+                </select>
+              </label>
+
+              <label class="field field--stat">
+                <span class="field__label">Precisión</span>
+                <select id="statPrecision" data-stat="precision">
+                  <option value="A">A</option><option value="B" selected>B</option>
+                  <option value="C">C</option><option value="D">D</option><option value="E">E</option>
+                </select>
+              </label>
+
+              <label class="field field--stat">
+                <span class="field__label">Potencial</span>
+                <select id="statPotential" data-stat="potential">
+                  <option value="A">A</option><option value="B" selected>B</option>
+                  <option value="C">C</option><option value="D">D</option><option value="E">E</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="derived-panel">
+              <div class="derived-panel__item">
+                <span class="derived-panel__label">HP Total</span>
+                <span class="derived-panel__value" id="derivedHP">—</span>
+                <span class="derived-panel__hint">Base 80 + (Nivel × 15)</span>
+              </div>
+              <div class="derived-panel__item">
+                <span class="derived-panel__label">Bonif. de Daño</span>
+                <span class="derived-panel__value" id="derivedDmg">—</span>
+                <span class="derived-panel__hint">Según Poder Destructivo</span>
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset class="form__group">
+            <legend>Habilidades (3)</legend>
+
+            <div class="ability-block" data-ability-index="0">
+              <div class="ability-block__header">Habilidad I</div>
+              <div class="form__row">
+                <label class="field">
+                  <span class="field__label">Nombre</span>
+                  <input type="text" class="ability-name" maxlength="40" placeholder="Ej. Ora Ora Rush">
+                </label>
+                <label class="field field--small">
+                  <span class="field__label">Daño Base (15–60)</span>
+                  <input type="number" class="ability-damage" min="15" max="60" step="1" value="30">
+                </label>
+                <label class="field field--small">
+                  <span class="field__label">Cooldown (0–3)</span>
+                  <input type="number" class="ability-cooldown" min="0" max="3" step="1" value="1">
+                </label>
+              </div>
+              <label class="field">
+                <span class="field__label">Descripción breve</span>
+                <input type="text" class="ability-desc" maxlength="120" placeholder="Ráfaga de golpes a velocidad luz.">
+              </label>
+            </div>
+
+            <div class="ability-block" data-ability-index="1">
+              <div class="ability-block__header">Habilidad II</div>
+              <div class="form__row">
+                <label class="field">
+                  <span class="field__label">Nombre</span>
+                  <input type="text" class="ability-name" maxlength="40" placeholder="Ej. Star Finger">
+                </label>
+                <label class="field field--small">
+                  <span class="field__label">Daño Base (15–60)</span>
+                  <input type="number" class="ability-damage" min="15" max="60" step="1" value="30">
+                </label>
+                <label class="field field--small">
+                  <span class="field__label">Cooldown (0–3)</span>
+                  <input type="number" class="ability-cooldown" min="0" max="3" step="1" value="1">
+                </label>
+              </div>
+              <label class="field">
+                <span class="field__label">Descripción breve</span>
+                <input type="text" class="ability-desc" maxlength="120" placeholder="Extensión del dedo índice a distancia.">
+              </label>
+            </div>
+
+            <div class="ability-block" data-ability-index="2">
+              <div class="ability-block__header">Habilidad III</div>
+              <div class="form__row">
+                <label class="field">
+                  <span class="field__label">Nombre</span>
+                  <input type="text" class="ability-name" maxlength="40" placeholder="Ej. Time Stop">
+                </label>
+                <label class="field field--small">
+                  <span class="field__label">Daño Base (15–60)</span>
+                  <input type="number" class="ability-damage" min="15" max="60" step="1" value="30">
+                </label>
+                <label class="field field--small">
+                  <span class="field__label">Cooldown (0–3)</span>
+                  <input type="number" class="ability-cooldown" min="0" max="3" step="1" value="1">
+                </label>
+              </div>
+              <label class="field">
+                <span class="field__label">Descripción breve</span>
+                <input type="text" class="ability-desc" maxlength="120" placeholder="Detención del tiempo por unos segundos.">
+              </label>
+            </div>
+          </fieldset>
+
+          <div class="form__actions">
+            <button type="button" class="btn btn--ghost" id="btnCancelForm">Cancelar</button>
+            <button type="submit" class="btn btn--gold" id="btnSubmitForm">Guardar Stand</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+    <!-- ===== MODAL: NUEVO ESCENARIO ===== -->
+    <div class="modal-backdrop" id="stageModalBackdrop" hidden>
+        <div class="modal modal--stage" role="dialog" aria-modal="true" aria-labelledby="stageModalTitle">
+          <header class="modal__header">
+            <h2 class="modal__title" id="stageModalTitle">Nuevo Escenario</h2>
+            <button type="button" class="modal__close" id="btnCloseStageModal" aria-label="Cerrar">✕</button>
+          </header>
+    
+          <form class="modal__form modal__form--stage" id="stageForm" novalidate>
+            <aside class="form__preview-col">
+              <div class="stage-preview" id="stagePreview">
+                <img id="stagePreviewImage" alt="Vista previa del escenario" hidden>
+                <div class="stage-preview__placeholder" id="stagePreviewPlaceholder">
+                  <span class="stage-preview__icon">🖼</span>
+                  <span class="stage-preview__hint">Imagen panorámica<br>16:9</span>
+                </div>
+              </div>
+    
+              <label class="file-drop" for="stageImageInput">
+                <input type="file" id="stageImageInput" accept="image/png,image/jpeg,image/webp" hidden>
+                <span class="file-drop__icon">⇪</span>
+                <span class="file-drop__label">Subir fondo</span>
+                <span class="file-drop__hint">JPG / PNG / WEBP</span>
+              </label>
+            </aside>
+    
+            <div class="form__fields-col">
+              <fieldset class="form__group">
+                <legend>Datos del Escenario</legend>
+    
+                <label class="field">
+                  <span class="field__label">Nombre del Escenario</span>
+                  <input type="text" id="stageNameInput" maxlength="60" required
+                         placeholder="Ej. Techo de la Torre del Reloj">
+                </label>
+    
+                <label class="field">
+                    <span class="field__label">Afinidad Favorecida <em>(+15% efectividad)</em></span>
+                    <select id="stageAffinityInput" required>
+                      <!-- Se puebla dinámicamente desde app.js:
+                           base + afinidades personalizadas del usuario -->
+                    </select>
+                  </label>
+              </fieldset>
+    
+              <div class="form__actions">
+                <button type="button" class="btn btn--ghost" id="btnCancelStage">Cancelar</button>
+                <button type="submit" class="btn btn--gold">Guardar Escenario</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+
+        <!-- ===== MODAL: VICTORIA / K.O. ===== -->
+  <div class="modal-backdrop modal-backdrop--victory" id="victoryBackdrop" hidden>
+    <div class="victory-modal" role="dialog" aria-modal="true" aria-labelledby="victoryTitle">
+      <div class="victory-modal__rays"></div>
+
+      <div class="victory-modal__content">
+        <p class="victory-modal__kicker" id="victoryKicker">K.O.</p>
+        <h2 class="victory-modal__title" id="victoryTitle">¡VICTORIA!</h2>
+
+        <div class="victory-modal__portrait-wrap">
+          <img class="victory-modal__portrait" id="victoryPortrait" alt="">
+          <div class="victory-modal__portrait-fallback" id="victoryPortraitFallback">🏆</div>
+        </div>
+
+        <p class="victory-modal__stand-name" id="victoryStandName">—</p>
+        <p class="victory-modal__artist-name" id="victoryArtistName">—</p>
+
+        <div class="victory-modal__stats">
+          <div class="victory-modal__stat">
+            <span class="victory-modal__stat-label">HP Restante</span>
+            <span class="victory-modal__stat-value" id="victoryHp">—</span>
+          </div>
+          <div class="victory-modal__stat">
+            <span class="victory-modal__stat-label">Turnos</span>
+            <span class="victory-modal__stat-value" id="victoryTurns">—</span>
+          </div>
+          <div class="victory-modal__stat">
+            <span class="victory-modal__stat-label">Daño Total</span>
+            <span class="victory-modal__stat-value" id="victoryDamage">—</span>
+          </div>
+        </div>
+
+        <div class="victory-modal__actions">
+          <button type="button" class="btn btn--gold" id="btnRematch">↻ Volver a Sorteo / Revancha</button>
+          <button type="button" class="btn btn--ghost" id="btnBackToRosterFromVictory">⌂ Regresar al Roster</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== TOAST / NOTIFICACIONES ===== -->
+  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
