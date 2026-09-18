@@ -58,6 +58,15 @@
     const HP_MID_THRESHOLD = 0.60;
 
     /* =========================================================
+     MÓDULO 4 — CONSTANTES Y ESTADO
+     ========================================================= */
+    const MODE_KEY = 'jja_game_mode_v1';
+    const ROUND_KEY = 'jja_tournament_round_v1';
+
+    let currentMode = 'royale'; // 'royale' | 'free'
+    let tournamentRound = 1;
+
+    /* =========================================================
         MÓDULO 2 — REFS DOM
         ========================================================= */
     // Vistas
@@ -174,6 +183,183 @@
     const victoryDamage     = $('#victoryDamage');
     const btnRematch        = $('#btnRematch');
     const btnBackToRosterFromVictory = $('#btnBackToRosterFromVictory');
+
+      /* =========================================================
+     MÓDULO 4 — REFS DOM
+     ========================================================= */
+  const modeBtnRoyale         = $('#modeBtnRoyale');
+  const modeBtnFree           = $('#modeBtnFree');
+  const btnResetTournament    = $('#btnResetTournament');
+  const tournamentStatus      = $('#tournamentStatus');
+  const tournamentAliveCount  = $('#tournamentAliveCount');
+  const tournamentDefeatedCount = $('#tournamentDefeatedCount');
+  const tournamentRoundEl = $('#tournamentRound');
+
+  const championBackdrop      = $('#championBackdrop');
+  const championPortrait      = $('#championPortrait');
+  const championPortraitFallback = $('#championPortraitFallback');
+  const championStandName     = $('#championStandName');
+  const championArtistName    = $('#championArtistName');
+  const championHp            = $('#championHp');
+  const championBattles       = $('#championBattles');
+  const championDamage        = $('#championDamage');
+  const btnResetFromChampion  = $('#btnResetFromChampion');
+  const btnBackToRosterFromChampion = $('#btnBackToRosterFromChampion');
+
+      /* =========================================================
+     MÓDULO 4 — MODO DE JUEGO
+     ========================================================= */
+  function loadMode() {
+    const stored = localStorage.getItem(MODE_KEY);
+    currentMode = (stored === 'free' || stored === 'royale') ? stored : 'royale';
+    tournamentRound = Number(localStorage.getItem(ROUND_KEY)) || 1;
+  }
+
+  function saveMode() {
+    localStorage.setItem(MODE_KEY, currentMode);
+    localStorage.setItem(ROUND_KEY, String(tournamentRound));
+  }
+
+  function setMode(mode) {
+    if (mode !== 'royale' && mode !== 'free') return;
+    currentMode = mode;
+    saveMode();
+    applyModeUI();
+    renderGallery();
+    updateTournamentStatus();
+  }
+
+  function applyModeUI() {
+    const isRoyale = currentMode === 'royale';
+
+    modeBtnRoyale.classList.toggle('is-active', isRoyale);
+    modeBtnRoyale.setAttribute('aria-selected', String(isRoyale));
+    modeBtnFree.classList.toggle('is-active', !isRoyale);
+    modeBtnFree.setAttribute('aria-selected', String(!isRoyale));
+
+    btnResetTournament.hidden = !isRoyale;
+    tournamentStatus.hidden = !isRoyale;
+  }
+
+  function updateTournamentStatus() {
+    if (currentMode !== 'royale') return;
+
+    const alive = roster.filter((s) => !s.isDefeated).length;
+    const defeated = roster.filter((s) => s.isDefeated).length;
+
+    tournamentAliveCount.textContent = String(alive);
+    tournamentDefeatedCount.textContent = String(defeated);
+    tournamentRoundEl.textContent = toRoman(tournamentRound);
+  }
+
+  /* =========================================================
+     MÓDULO 4 — ELEGIBLES PARA LA RULETA
+     ========================================================= */
+  function getEligibleStands() {
+    if (currentMode === 'royale') {
+      return roster.filter((s) => !s.isDefeated);
+    }
+    return roster.slice();
+  }
+
+  /* =========================================================
+     MÓDULO 4 — MARCAR K.O. (BATTLE ROYALE)
+     ========================================================= */
+  function markDefeated(loserId) {
+    if (currentMode !== 'royale') return;
+    const idx = roster.findIndex((s) => s.id === loserId);
+    if (idx < 0) return;
+    roster[idx].isDefeated = true;
+    roster[idx].defeatedAt = Date.now();
+    saveRoster();
+  }
+
+  function checkTournamentEnd() {
+    if (currentMode !== 'royale') return false;
+    const survivors = roster.filter((s) => !s.isDefeated);
+    return survivors.length <= 1;
+  }
+
+  function resetTournament() {
+    roster = roster.map((s) => {
+      const { isDefeated, defeatedAt, ...rest } = s;
+      return rest;
+    });
+    tournamentRound = 1;
+    saveRoster();
+    saveMode();
+    renderGallery();
+    updateTournamentStatus();
+    toast('Torneo reiniciado. Todos los Stands vuelven a estar disponibles.', 'success');
+  }
+
+  /* =========================================================
+     MÓDULO 4 — MODAL DE CAMPEÓN
+     ========================================================= */
+  function showChampionModal() {
+    const survivor = roster.find((s) => !s.isDefeated);
+    if (!survivor) return;
+
+    championStandName.textContent = survivor.standName;
+    championArtistName.textContent = `Artista: ${survivor.artistName}`;
+
+    if (survivor.image) {
+      championPortrait.src = survivor.image;
+      championPortrait.alt = survivor.standName;
+      championPortrait.style.display = 'block';
+      championPortraitFallback.style.display = 'none';
+    } else {
+      championPortrait.removeAttribute('src');
+      championPortrait.style.display = 'none';
+      championPortraitFallback.style.display = 'grid';
+    }
+
+    const hp = computeHP(survivor.stats.durability, survivor.level || DEFAULT_LEVEL);
+    championHp.textContent = `${hp} / ${hp}`;
+    championBattles.textContent = String(tournamentRound);
+    championDamage.textContent = '—';
+
+    championBackdrop.hidden = false;
+  }
+
+  function closeChampionModal() {
+    championBackdrop.hidden = true;
+  }
+
+  /* =========================================================
+     MÓDULO 4 — EVENTOS
+     ========================================================= */
+  function bindModule4Events() {
+    modeBtnRoyale.addEventListener('click', () => setMode('royale'));
+    modeBtnFree.addEventListener('click', () => setMode('free'));
+
+    btnResetTournament.addEventListener('click', () => {
+      if (!confirm('¿Reiniciar el torneo? Todos los Stands eliminados volverán a estar disponibles.')) return;
+      resetTournament();
+    });
+
+    btnResetFromChampion.addEventListener('click', () => {
+      closeChampionModal();
+      resetTournament();
+      exitBattleToTournament();
+    });
+
+    btnBackToRosterFromChampion.addEventListener('click', () => {
+      closeChampionModal();
+      exitBattleToRoster();
+    });
+
+    championBackdrop.addEventListener('click', (e) => {
+      if (e.target === championBackdrop) closeChampionModal();
+    });
+  }
+
+  function initModule4() {
+    loadMode();
+    applyModeUI();
+    updateTournamentStatus();
+    bindModule4Events();
+  }
 
     /* =========================================================
        ESTADO
@@ -354,8 +540,16 @@
         ? `<p class="stand-card__cry">“${escapeHtml(stand.battleCry)}”</p>`
         : '';
   
+        const retiredBadge = stand.isDefeated
+        ? '<span class="stand-card__retired">RETIRED</span>'
+        : '';
+  
+      card.className = 'stand-card' + (stand.isDefeated ? ' is-defeated' : '');
+      card.dataset.id = stand.id;
+  
       card.innerHTML = `
         <div class="stand-card__frame">
+          ${retiredBadge}
           <span class="stand-card__affinity">${escapeHtml(stand.affinity)}</span>
           <span class="stand-card__hp">${hp}</span>
           ${imgMarkup}
@@ -700,6 +894,7 @@
     }
   
     function normalizeStand(raw) {
+        
       if (!raw || typeof raw !== 'object') return null;
       const stats = {};
       STAT_KEYS.forEach((k) => {
@@ -732,7 +927,9 @@
         imageMime: typeof raw.imageMime === 'string' ? raw.imageMime : null,
         level: clampNumber(raw.level, 1, 99, DEFAULT_LEVEL),
         createdAt: Number(raw.createdAt) || Date.now(),
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
+        isDefeated: Boolean(raw.isDefeated),
+        defeatedAt: Number(raw.defeatedAt) || null,
       };
     }
   
@@ -1015,19 +1212,26 @@
   /* =========================================================
      MÓDULO 2 — TRANSICIÓN DE VISTAS
      ========================================================= */
-  function showTournamentView() {
-    if (roster.length < 2) {
-      toast('Se necesitan al menos 2 Stands para el sorteo.', 'error');
-      return;
-    }
-    rosterView.hidden = true;
-    tournamentView.hidden = false;
-    versusScreen.hidden = true;
-    document.querySelector('.roulette-zone').hidden = false;
-    document.querySelector('.roulette-stage').hidden = false;
-    document.querySelector('.stage-manager').hidden = false;
-    window.scrollTo({ top: 0, behavior: 'instant' });
-  }
+     function showTournamentView() {
+        if (roster.length < 2) {
+          toast('Se necesitan al menos 2 Stands para el sorteo.', 'error');
+          return;
+        }
+        rosterView.hidden = true;
+        tournamentView.hidden = false;
+        versusScreen.hidden = true;
+        battleView.hidden = true;
+        document.body.classList.remove('is-battling');
+    
+        document.querySelector('.roulette-zone').hidden = false;
+        document.querySelector('.roulette-stage').hidden = false;
+        document.querySelector('.stage-manager').hidden = false;
+    
+        applyModeUI();
+        updateTournamentStatus();
+    
+        window.scrollTo(0, 0);
+      }
 
   function showRosterView() {
     tournamentView.hidden = true;
@@ -1076,8 +1280,22 @@
 
   async function spinRoulette() {
     if (isSpinning) return;
-    if (roster.length < 2) {
-      toast('Se necesitan al menos 2 Stands.', 'error');
+
+    const eligible = getEligibleStands();
+
+    // Battle Royale: si solo queda 1, anunciar campeón
+    if (currentMode === 'royale' && eligible.length <= 1) {
+      if (eligible.length === 1) {
+        toast('¡Torneo finalizado! Queda un único superviviente.', 'success');
+        showChampionModal();
+      } else {
+        toast('No hay Stands elegibles. Reinicia el torneo o cambia a Modo Libre.', 'error');
+      }
+      return;
+    }
+
+    if (eligible.length < 2) {
+      toast('Se necesitan al menos 2 Stands elegibles para el sorteo.', 'error');
       return;
     }
 
@@ -1085,34 +1303,31 @@
     btnSpinRoulette.disabled = true;
     versusScreen.hidden = true;
 
-    // Elegir resultados al azar ANTES de la animación
-    const [p1, p2] = pickTwoDistinct(roster);
+    // Elegir resultados al azar desde los elegibles
+    const [p1, p2] = pickTwoDistinct(eligible);
     const stage = stages.length > 0 ? pickRandom(stages) : null;
 
-    // Pre-calentar imágenes (evita saltos visuales al soltar)
     preloadImage(p1.image);
     preloadImage(p2.image);
     if (stage) preloadImage(stage.image);
 
-    // Onomatopeya
     rouletteOnoma.hidden = false;
     rouletteEmblem.style.opacity = '0.35';
 
-    // Fase de spinning
     reelP1.classList.add('is-spinning');
     reelP2.classList.add('is-spinning');
     reelStage.classList.add('is-spinning');
 
-    // Ciclos visuales rápidos durante el spin (intercambio de candidatos)
     const spinDuration = 2200;
     const spinInterval = 90;
     const spinner = setInterval(() => {
-      if (Math.random() < 0.7) {
-        const r = pickRandom(roster);
+      const pool = getEligibleStands();
+      if (Math.random() < 0.7 && pool.length > 0) {
+        const r = pickRandom(pool);
         reelP1.innerHTML = buildFighterImgHTML(r, 'roulette-slot__glyph-img');
       }
-      if (Math.random() < 0.7) {
-        const r = pickRandom(roster);
+      if (Math.random() < 0.7 && pool.length > 0) {
+        const r = pickRandom(pool);
         reelP2.innerHTML = buildFighterImgHTML(r, 'roulette-slot__glyph-img');
       }
       if (stages.length > 0 && Math.random() < 0.6) {
@@ -1123,27 +1338,21 @@
       }
     }, spinInterval);
 
-    // Esperar el tiempo del spin
     await wait(spinDuration);
-
     clearInterval(spinner);
 
-    // Fase de bloqueo (uno a uno)
     reelP1.classList.remove('is-spinning');
     reelP2.classList.remove('is-spinning');
     reelStage.classList.remove('is-spinning');
 
-    // Fijar P1
     reelP1.innerHTML = buildFighterImgHTML(p1, 'roulette-slot__glyph-img');
     reelP1.classList.add('is-locked');
     await wait(280);
 
-    // Fijar P2
     reelP2.innerHTML = buildFighterImgHTML(p2, 'roulette-slot__glyph-img');
     reelP2.classList.add('is-locked');
     await wait(280);
 
-    // Fijar escenario
     reelStage.innerHTML = stage && stage.image
       ? `<img src="${escapeHtml(stage.image)}" alt="${escapeHtml(stage.name)}">`
       : '<span class="roulette-stage__glyph">🏙</span>';
@@ -1155,10 +1364,8 @@
     btnSpinRoulette.disabled = false;
     isSpinning = false;
 
-    // Guardar matchup en memoria
     currentMatchup = { p1, p2, stage };
 
-    // Mostrar Versus tras un pequeño beat
     await wait(220);
     showVersusScreen(currentMatchup);
   }
@@ -1727,8 +1934,8 @@
           }
           actionName = ability.name || `Habilidad ${skillIndex + 1}`;
           result = computeSkillDamage(attacker.data, defender.data, ability);
-          // Aplicar cooldown
-          attacker.cooldowns[skillIndex] = Number(ability.cooldown) || 0;
+          // Aplicar cooldown (guardamos CD + 1 para contar el turno actual como consumido)
+          attacker.cooldowns[skillIndex] = (Number(ability.cooldown) || 0) + 1; // ← FIX
         } else {
           battle.busy = false;
           return;
@@ -1820,13 +2027,15 @@
         const previous = battle.activeSide;
         const next = previous === 'p1' ? 'p2' : 'p1';
     
-        // Tick de cooldowns del que acaba de jugar
-        const used = battle[previous];
-        used.cooldowns = used.cooldowns.map((cd) => Math.max(0, cd - 1));
-    
+        // Avanzar turno
         battle.activeSide = next;
         battle.turn += 1;
         if (battle.turn % 2 === 1) battle.round += 1;
+    
+        // Decrementar cooldowns del JUGADOR QUE VA A ACTUAR AHORA
+        // (así el CD se cuenta en "sus propios turnos", no en los del rival)
+        const incoming = battle[next];
+        incoming.cooldowns = incoming.cooldowns.map((cd) => Math.max(0, cd - 1));
     
         // Refrescar
         renderBattleUI();
@@ -1939,34 +2148,45 @@
       /* =========================================================
          MÓDULO 3 — MODAL DE VICTORIA
          ========================================================= */
-      function showVictoryModal(winnerSide) {
-        if (!battle) return;
-        const winner = battle[winnerSide];
-        const loserSide = winnerSide === 'p1' ? 'p2' : 'p1';
-        const loser = battle[loserSide];
-    
-        victoryKicker.textContent = `K.O. · ${loser.data.standName} derrotado`;
-        victoryTitle.textContent = '¡VICTORIA!';
-        victoryStandName.textContent = winner.data.standName;
-        victoryArtistName.textContent = `Artista: ${winner.data.artistName}`;
-    
-        if (winner.data.image) {
-          victoryPortrait.src = winner.data.image;
-          victoryPortrait.alt = winner.data.standName;
-          victoryPortrait.style.display = 'block';
-          victoryPortraitFallback.style.display = 'none';
-        } else {
-          victoryPortrait.removeAttribute('src');
-          victoryPortrait.style.display = 'none';
-          victoryPortraitFallback.style.display = 'grid';
-        }
-    
-        victoryHp.textContent = `${winner.hp} / ${winner.maxHp}`;
-        victoryTurns.textContent = String(battle.turn);
-        victoryDamage.textContent = String(winner.totalDamage);
-    
-        victoryBackdrop.hidden = false;
-      }
+         function showVictoryModal(winnerSide) {
+            if (!battle) return;
+            const winner = battle[winnerSide];
+            const loserSide = winnerSide === 'p1' ? 'p2' : 'p1';
+            const loser = battle[loserSide];
+        
+            // Marcar al perdedor como derrotado (solo Battle Royale)
+            markDefeated(loser.data.id);
+        
+            victoryKicker.textContent = `K.O. · ${loser.data.standName} derrotado`;
+            victoryTitle.textContent = '¡VICTORIA!';
+            victoryStandName.textContent = winner.data.standName;
+            victoryArtistName.textContent = `Artista: ${winner.data.artistName}`;
+        
+            if (winner.data.image) {
+              victoryPortrait.src = winner.data.image;
+              victoryPortrait.alt = winner.data.standName;
+              victoryPortrait.style.display = 'block';
+              victoryPortraitFallback.style.display = 'none';
+            } else {
+              victoryPortrait.removeAttribute('src');
+              victoryPortrait.style.display = 'none';
+              victoryPortraitFallback.style.display = 'grid';
+            }
+        
+            victoryHp.textContent = `${winner.hp} / ${winner.maxHp}`;
+            victoryTurns.textContent = String(battle.turn);
+            victoryDamage.textContent = String(winner.totalDamage);
+        
+            // Battle Royale: avanzar ronda y refrescar estado
+            if (currentMode === 'royale') {
+              tournamentRound++;
+              saveMode();
+              updateTournamentStatus();
+              renderGallery();
+            }
+        
+            victoryBackdrop.hidden = false;
+          }
     
       function closeVictoryModal() {
         victoryBackdrop.hidden = true;
@@ -2078,7 +2298,8 @@
         updateReadyButton();
         bindEvents();
         initModule2();
-        initModule3(); // ← NUEVO
+        initModule3();
+        initModule4(); // ← NUEVO
       }
   
     document.addEventListener('DOMContentLoaded', init);

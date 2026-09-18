@@ -58,6 +58,44 @@
           <div class="tournament__spacer"></div>
         </div>
     
+            <!-- Selector de Modo de Juego -->
+    <div class="mode-selector" id="modeSelector">
+        <div class="mode-selector__modes" role="tablist" aria-label="Modo de juego">
+          <button type="button" class="mode-btn is-active" id="modeBtnRoyale" data-mode="royale" role="tab" aria-selected="true">
+            <span class="mode-btn__icon">🏆</span>
+            <span class="mode-btn__label">Modo Battle Royale</span>
+            <span class="mode-btn__hint">Torneo · Eliminación</span>
+          </button>
+          <button type="button" class="mode-btn" id="modeBtnFree" data-mode="free" role="tab" aria-selected="false">
+            <span class="mode-btn__icon">⚔</span>
+            <span class="mode-btn__label">Modo Exhibición / Libre</span>
+            <span class="mode-btn__hint">Sin consecuencias</span>
+          </button>
+        </div>
+  
+        <div class="mode-selector__actions">
+          <button type="button" class="btn btn--danger" id="btnResetTournament" hidden>
+            ↻ Reiniciar Torneo
+          </button>
+        </div>
+      </div>
+  
+      <!-- Barra de estado del torneo (solo modo Royale) -->
+      <div class="tournament-status" id="tournamentStatus" hidden>
+        <div class="tournament-status__item">
+          <span class="tournament-status__label">Supervivientes</span>
+          <span class="tournament-status__value" id="tournamentAliveCount">—</span>
+        </div>
+        <div class="tournament-status__item">
+          <span class="tournament-status__label">Eliminados</span>
+          <span class="tournament-status__value" id="tournamentDefeatedCount">—</span>
+        </div>
+        <div class="tournament-status__item">
+          <span class="tournament-status__label">Ronda Actual</span>
+          <span class="tournament-status__value" id="tournamentRound">I</span>
+        </div>
+      </div>
+
         <!-- ===== PANEL DE ESCENARIOS ===== -->
         <div class="stage-manager">
           <header class="stage-manager__header">
@@ -618,9 +656,54 @@
     </div>
   </div>
 
+    <!-- ===== MODAL: CAMPEÓN DEL TORNEO ===== -->
+    <div class="modal-backdrop modal-backdrop--victory" id="championBackdrop" hidden>
+        <div class="champion-modal" role="dialog" aria-modal="true" aria-labelledby="championTitle">
+          <div class="champion-modal__rays"></div>
+          <div class="champion-modal__content">
+            <p class="champion-modal__kicker">Campeón del Torneo</p>
+            <h2 class="champion-modal__title" id="championTitle">¡ÚLTIMO EN PIE!</h2>
+    
+            <div class="champion-modal__portrait-wrap">
+              <img class="champion-modal__portrait" id="championPortrait" alt="">
+              <div class="champion-modal__portrait-fallback" id="championPortraitFallback">👑</div>
+            </div>
+    
+            <p class="champion-modal__stand-name" id="championStandName">—</p>
+            <p class="champion-modal__artist-name" id="championArtistName">—</p>
+            <p class="champion-modal__message" id="championMessage">
+              Ha derrotado a todos los rivales del Battle Royale.
+            </p>
+    
+            <div class="champion-modal__stats">
+              <div class="champion-modal__stat">
+                <span class="champion-modal__stat-label">HP Final</span>
+                <span class="champion-modal__stat-value" id="championHp">—</span>
+              </div>
+              <div class="champion-modal__stat">
+                <span class="champion-modal__stat-label">Combates</span>
+                <span class="champion-modal__stat-value" id="championBattles">—</span>
+              </div>
+              <div class="champion-modal__stat">
+                <span class="champion-modal__stat-label">Daño Total</span>
+                <span class="champion-modal__stat-value" id="championDamage">—</span>
+              </div>
+            </div>
+    
+            <div class="champion-modal__actions">
+              <button type="button" class="btn btn--danger" id="btnResetFromChampion">↻ Reiniciar Torneo</button>
+              <button type="button" class="btn btn--ghost" id="btnBackToRosterFromChampion">⌂ Regresar al Roster</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
   <!-- ===== TOAST / NOTIFICACIONES ===== -->
   <div class="toast-stack" id="toastStack" aria-live="polite"></div>
 
+  <script src="events-data.js"></script>
+  <script src="events-roulette.js"></script>
+  <script src="requiem.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
