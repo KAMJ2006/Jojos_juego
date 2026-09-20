@@ -2,12 +2,14 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JoJo Artist Arena — Roster Manager</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="events.css">
 </head>
 <body>
 
@@ -79,7 +81,32 @@
           </button>
         </div>
       </div>
+
+      <!-- Configuración de Eventos de Arena -->
+      <div class="events-config" id="eventsConfig">
+        <div class="events-config__label">
+          <span class="events-config__icon">🔄</span>
+          <span class="events-config__title">Eventos de Arena</span>
+        </div>
   
+        <label class="events-config__opt">
+          <input type="radio" name="eventFreq" value="off" data-freq="off">
+          <span>Sin Eventos</span>
+        </label>
+  
+        <label class="events-config__opt">
+          <input type="radio" name="eventFreq" value="perBattle" data-freq="perBattle" checked>
+          <span>1 por Combate</span>
+        </label>
+  
+        <label class="events-config__opt">
+          <input type="radio" name="eventFreq" value="dynamic" data-freq="dynamic">
+          <span>Dinámicos cada</span>
+          <input type="number" class="events-config__num" id="eventEveryRounds" min="1" max="10" value="2">
+          <span>rondas</span>
+        </label>
+      </div>
+
       <!-- Barra de estado del torneo (solo modo Royale) -->
       <div class="tournament-status" id="tournamentStatus" hidden>
         <div class="tournament-status__item">
@@ -129,9 +156,7 @@
           <!-- Columna central: controles -->
           <div class="roulette-center">
             <div class="roulette-emblem" id="rouletteEmblem">運命</div>
-            <button type="button" class="btn btn--gold btn--roulette" id="btnSpinRoulette">
-              🎰 ¡GIRAR RULETA DE DESTINO!
-            </button>
+            <button type="button" class="btn btn--gold" id="btnSpinRoulette">🎰 GIRAR RULETA</button>
             <div class="roulette-onoma" id="rouletteOnoma" hidden>DODODO...</div>
           </div>
     
@@ -227,6 +252,22 @@
       <button type="button" class="btn btn--ghost" id="btnExitBattle">← Salir de la Arena</button>
       <div class="battle__stage-name" id="battleStageName">—</div>
       <div class="battle__turn-indicator" id="battleTurnIndicator">Turno 1</div>
+    </div>
+
+        <!-- Widget flotante: se activa cuando corresponde un evento -->
+    <div class="event-widget" id="eventNoticeBar" hidden>
+      <button type="button" class="event-widget__btn" id="eventNoticeButton" aria-label="¡Interferencia del Destino!">
+        <svg class="event-widget__ring" viewBox="0 0 100 100" aria-hidden="true">
+          <circle class="event-widget__ring-track" cx="50" cy="50" r="44" />
+          <circle class="event-widget__ring-progress" id="eventWidgetRing" cx="50" cy="50" r="44"
+                  stroke-dasharray="276.46" stroke-dashoffset="0"
+                  transform="rotate(-90 50 50)" />
+        </svg>
+        <span class="event-widget__icon">🌪</span>
+        <span class="event-widget__pulse"></span>
+      </button>
+      <span class="event-widget__label">¡DESTINO!</span>
+      <span class="event-widget__timer" id="eventWidgetTimer">8</span>
     </div>
 
     <!-- Combatientes -->
@@ -697,6 +738,71 @@
           </div>
         </div>
       </div>
+
+          <!-- ===== MODAL: RULETA CIRCULAR DE EVENTOS ===== -->
+  <div class="modal-backdrop modal-backdrop--events" id="eventModalBackdrop" hidden>
+    <div class="event-modal" role="dialog" aria-modal="true" aria-labelledby="eventModalTitle">
+      <header class="event-modal__header">
+        <h2 class="event-modal__title" id="eventModalTitle">Ruleta del Destino</h2>
+        <button type="button" class="modal__close" id="eventBtnClose" aria-label="Cerrar">✕</button>
+      </header>
+
+      <div class="event-modal__body">
+
+        <!-- ===== RUEDA CIRCULAR ===== -->
+        <div class="wheel-stage">
+          <div class="wheel-frame">
+            <!-- Gajos dibujados en SVG por JS -->
+            <svg class="wheel" id="eventWheelSvg" viewBox="0 0 300 300" aria-hidden="true">
+              <defs>
+                <radialGradient id="wheelHubGrad" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%"  stop-color="#f7e7a3" />
+                  <stop offset="70%" stop-color="#c9a13a" />
+                  <stop offset="100%" stop-color="#6a4f13" />
+                </radialGradient>
+              </defs>
+              <!-- Los <path> de los gajos se inyectan desde events-roulette.js -->
+              <g id="eventWheelSlices"></g>
+              <circle class="wheel__hub" cx="150" cy="150" r="26" fill="url(#wheelHubGrad)" />
+              <circle class="wheel__hub-inner" cx="150" cy="150" r="14" />
+            </svg>
+
+            <!-- Aguja fija superior -->
+            <div class="wheel__pointer" aria-hidden="true">
+              <svg viewBox="0 0 40 60">
+                <polygon points="20,60 4,10 36,10" fill="#e35c4f" stroke="#fff" stroke-width="2" />
+                <circle cx="20" cy="10" r="4" fill="#fff" />
+              </svg>
+            </div>
+
+            <!-- Aro decorativo exterior -->
+            <div class="wheel__rim" aria-hidden="true"></div>
+          </div>
+        </div>
+
+        <!-- ===== REVEAL DEL EVENTO ===== -->
+        <div class="event-reveal" id="eventReveal">
+          <div class="event-reveal__icon" id="eventRevealIcon"><span class="event-reveal__icon-inner">❓</span></div>
+          <div class="event-reveal__info">
+            <div class="event-reveal__top">
+              <h3 class="event-reveal__name" id="eventRevealName">—</h3>
+              <span class="event-reveal__rarity" id="eventRevealRarity"></span>
+            </div>
+            <p class="event-reveal__short" id="eventRevealShort">Pulsa GIRAR para invocar un evento del destino.</p>
+            <p class="event-reveal__long" id="eventRevealLong" hidden></p>
+          </div>
+        </div>
+
+        <!-- ===== ACCIONES ===== -->
+        <div class="event-modal__actions">
+          <button type="button" class="btn btn--ghost" id="eventBtnToggleDesc" hidden>📖 Ver descripción</button>
+          <button type="button" class="btn btn--gold" id="eventBtnSpin">🎰 GIRAR RULETA</button>
+          <button type="button" class="btn btn--ready" id="eventBtnApply" disabled hidden>✓ APLICAR EVENTO</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
 
   <!-- ===== TOAST / NOTIFICACIONES ===== -->
   <div class="toast-stack" id="toastStack" aria-live="polite"></div>

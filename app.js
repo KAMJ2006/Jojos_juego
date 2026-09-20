@@ -222,8 +222,37 @@
 
   function setMode(mode) {
     if (mode !== 'royale' && mode !== 'free') return;
+
+    const previousMode = currentMode;
     currentMode = mode;
     saveMode();
+
+    // Al entrar a Modo Libre, limpiamos el estado del torneo en curso
+    if (mode === 'free' && previousMode !== 'free') {
+      roster = roster.map((s) => ({
+        ...s,
+        tournamentDamage: 0,
+        lastHp: null
+      }));
+      tournamentRound = 1;
+      saveRoster();
+      saveMode();
+    }
+
+    // Al volver a Royale desde Free, empezamos torneo limpio
+    if (mode === 'royale' && previousMode === 'free') {
+      roster = roster.map((s) => ({
+        ...s,
+        isDefeated: false,
+        defeatedAt: null,
+        lastHp: null,
+        tournamentDamage: 0
+      }));
+      tournamentRound = 1;
+      saveRoster();
+      saveMode();
+    }
+
     applyModeUI();
     renderGallery();
     updateTournamentStatus();
@@ -283,7 +312,13 @@
   function resetTournament() {
     roster = roster.map((s) => {
       const { isDefeated, defeatedAt, ...rest } = s;
-      return rest;
+      return {
+        ...rest,
+        isDefeated: false,
+        defeatedAt: null,
+        lastHp: null,
+        tournamentDamage: 0
+      };
     });
     tournamentRound = 1;
     saveRoster();
@@ -296,31 +331,40 @@
   /* =========================================================
      MÓDULO 4 — MODAL DE CAMPEÓN
      ========================================================= */
-  function showChampionModal() {
-    const survivor = roster.find((s) => !s.isDefeated);
-    if (!survivor) return;
-
-    championStandName.textContent = survivor.standName;
-    championArtistName.textContent = `Artista: ${survivor.artistName}`;
-
-    if (survivor.image) {
-      championPortrait.src = survivor.image;
-      championPortrait.alt = survivor.standName;
-      championPortrait.style.display = 'block';
-      championPortraitFallback.style.display = 'none';
-    } else {
-      championPortrait.removeAttribute('src');
-      championPortrait.style.display = 'none';
-      championPortraitFallback.style.display = 'grid';
+     function showChampionModal() {
+      const survivor = roster.find((s) => !s.isDefeated);
+      if (!survivor) return;
+  
+      championStandName.textContent = survivor.standName;
+      championArtistName.textContent = `Artista: ${survivor.artistName}`;
+  
+      if (survivor.image) {
+        championPortrait.src = survivor.image;
+        championPortrait.alt = survivor.standName;
+        championPortrait.style.display = 'block';
+        championPortraitFallback.style.display = 'none';
+      } else {
+        championPortrait.removeAttribute('src');
+        championPortrait.style.display = 'none';
+        championPortraitFallback.style.display = 'grid';
+      }
+  
+      // HP real con el que sobrevivió
+      const maxHp = computeHP(survivor.stats.durability, survivor.level || DEFAULT_LEVEL);
+      const finalHp = typeof survivor.lastHp === 'number' && survivor.lastHp >= 0
+        ? survivor.lastHp
+        : maxHp; // fallback si nunca combatió
+      championHp.textContent = `${finalHp} / ${maxHp}`;
+  
+      // Daño total acumulado durante el torneo
+      const totalDamage = Number(survivor.tournamentDamage) || 0;
+      championDamage.textContent = totalDamage > 0 ? String(totalDamage) : '0';
+  
+      // Combates = rondas que duró el torneo
+      championBattles.textContent = String(tournamentRound);
+  
+      championBackdrop.hidden = false;
     }
-
-    const hp = computeHP(survivor.stats.durability, survivor.level || DEFAULT_LEVEL);
-    championHp.textContent = `${hp} / ${hp}`;
-    championBattles.textContent = String(tournamentRound);
-    championDamage.textContent = '—';
-
-    championBackdrop.hidden = false;
-  }
 
   function closeChampionModal() {
     championBackdrop.hidden = true;
@@ -761,6 +805,10 @@
        ========================================================= */
     function upsertStand(data) {
       const payload = {
+        isDefeated: false,
+        defeatedAt: null,
+        lastHp: null,
+        tournamentDamage: 0,
         id: editingId || uid(),
         artistName: data.artistName,
         standName: data.standName,
@@ -779,7 +827,18 @@
   
       if (editingId) {
         const idx = roster.findIndex((s) => s.id === editingId);
-        if (idx >= 0) roster[idx] = { ...roster[idx], ...payload };
+        if (idx >= 0) {
+          const existing = roster[idx];
+          roster[idx] = {
+            ...existing,
+            ...payload,
+            // Preservar estado de torneo al editar
+            isDefeated: existing.isDefeated,
+            defeatedAt: existing.defeatedAt,
+            lastHp: existing.lastHp,
+            tournamentDamage: existing.tournamentDamage
+          };
+        }
       } else {
         roster.push(payload);
       }
@@ -930,6 +989,8 @@
         updatedAt: Date.now(),
         isDefeated: Boolean(raw.isDefeated),
         defeatedAt: Number(raw.defeatedAt) || null,
+        lastHp: Number(raw.lastHp) || null,
+        tournamentDamage: Number(raw.tournamentDamage) || 0,
       };
     }
   
@@ -949,6 +1010,24 @@
           toast('Se necesitan al menos 2 participantes para el emparejamiento.', 'error');
           return;
         }
+    
+        const wasReady = loadReadyFlag();
+    
+        // Si es la primera vez que entra (nuevo torneo), resetear estado de torneo previo
+        if (!wasReady) {
+          roster = roster.map((s) => ({
+            ...s,
+            isDefeated: false,
+            defeatedAt: null,
+            lastHp: null,
+            tournamentDamage: 0
+          }));
+          tournamentRound = 1;
+          saveRoster();
+          saveMode();
+          renderGallery();
+        }
+    
         saveReadyFlag(true);
         updateReadyButton();
         toast(`¡Arena lista con ${roster.length} participantes!`, 'success');
@@ -1653,7 +1732,7 @@
     });
 
     // Girar ruleta
-    btnSpinRoulette.addEventListener('click', spinRoulette);
+    btnSpinRoulette?.addEventListener('click', spinRoulette);
 
     // Volver a girar (desde versus)
     btnRespin.addEventListener('click', () => {
@@ -1684,7 +1763,8 @@
           toast('No hay enfrentamiento activo.', 'error');
           return;
         }
-    
+        
+        
         const p1 = currentMatchup.p1;
         const p2 = currentMatchup.p2;
         const stage = currentMatchup.stage;
@@ -1701,7 +1781,9 @@
           round: 1,
           log: [],
           finished: false,
-          busy: false
+          busy: false,
+          basicAttackLocked: 0,     // ← NUEVO: turnos restantes de bloqueo
+          basicAttackLockedBy: null // ← NUEVO: nombre del evento (para el tooltip)
         };
     
         // === Transición de vistas ===
@@ -1725,7 +1807,12 @@
         renderBattleUI();
         updateHpBar('p1');
         updateHpBar('p2');
-    
+        
+          // Notificar al módulo de eventos que empieza un combate
+          if (window.JJA_EventsRoulette) {
+            window.JJA_EventsRoulette.resetForBattle();
+          }
+
         // Anunciar primer turno
         announceTurn();
         updateActionPanel();
@@ -1805,15 +1892,19 @@
         if (!battle) return;
         const { p1, p2, stage } = battle;
     
-        const p1Bonus = stage && stage.affinity === p1.data.affinity;
-        const p2Bonus = stage && stage.affinity === p2.data.affinity;
+        const p1Bonus = (p1.terrainBoost > 0) || (stage && stage.affinity === p1.data.affinity);
+        const p2Bonus = (p2.terrainBoost > 0) || (stage && stage.affinity === p2.data.affinity);
+    
+        // El chip debe indicar la intensidad correcta
+        const p1Pct = p1.terrainBoost > 0 ? 30 : 15;
+        const p2Pct = p2.terrainBoost > 0 ? 30 : 15;
     
         statusP1.innerHTML = p1Bonus
-          ? '<span class="status-chip">Bonus +15%</span>'
-          : '';
-        statusP2.innerHTML = p2Bonus
-          ? '<span class="status-chip">Bonus +15%</span>'
-          : '';
+        ? `<span class="status-chip">Bonus +${p1Pct}%</span>`
+        : '';
+      statusP2.innerHTML = p2Bonus
+        ? `<span class="status-chip">Bonus +${p2Pct}%</span>`
+        : '';
       }
     
       function updateHpBar(side) {
@@ -1856,56 +1947,110 @@
         return CRIT_CHANCE[precision] ?? 0.10;
       }
     
-      function hasStageBonus(stand) {
-        if (!battle || !battle.stage) return false;
-        return battle.stage.affinity === stand.affinity;
+        /* =========================================================
+     CÁLCULO DEL BONUS DE TERRENO
+     - Bonus base: +15% si afinidad del Stand == afinidad del stage
+     - Bonus de evento (Terreno Reclamado): sobrescribe a +30% vía
+       fighter.terrainBoost (0.30) mientras el combate siga activo.
+     ========================================================= */
+  function getTerrainMultiplier(stand, fighter) {
+    const affinityMatches = battle && battle.stage && battle.stage.affinity === stand.affinity;
+
+    // Si el evento reclamó el terreno, respeta su boost aunque la afinidad
+    // fuera intercambiada dinámicamente por otro evento
+    if (fighter && typeof fighter.terrainBoost === 'number' && fighter.terrainBoost > 0) {
+      return 1 + fighter.terrainBoost;
+    }
+
+    return affinityMatches ? 1.15 : 1;
+  }
+
+  function hasStageBonus(stand, fighter) {
+    if (!battle || !battle.stage) return false;
+    if (fighter && typeof fighter.terrainBoost === 'number' && fighter.terrainBoost > 0) return true;
+    return battle.stage.affinity === stand.affinity;
+  }
+    
+  function computeBasicAttackDamage(attacker, defender, attackerFighter) {
+    const pwrBonus = PWR_BASIC_BONUS[attacker.stats.power] || 0;
+    let damage = BASIC_ATTACK_BASE + pwrBonus;
+
+    // Bonus de terreno (15% base, o 30% si Terreno Reclamado)
+    const terrainMult = getTerrainMultiplier(attacker, attackerFighter);
+    damage *= terrainMult;
+
+    // Crítico
+    const crit = Math.random() < getCritChance(attacker.stats.precision);
+    if (crit) damage *= CRIT_MULTIPLIER;
+
+    // Reducción por durabilidad del defensor
+    damage *= (1 - getDurReduction(defender.stats.durability));
+
+    return {
+      damage: Math.max(1, Math.round(damage)),
+      crit,
+      bonusApplied: terrainMult > 1,
+      terrainMult
+    };
+  }
+    
+  function computeSkillDamage(attacker, defender, ability, attackerFighter) {
+    let damage = Number(ability.damage) || 30;
+
+    const pwrBonus = PWR_BASIC_BONUS[attacker.stats.power] || 0;
+    damage += pwrBonus * 0.6;
+
+    // Bonus de terreno (15% base, o 30% si Terreno Reclamado)
+    const terrainMult = getTerrainMultiplier(attacker, attackerFighter);
+    damage *= terrainMult;
+
+    // Crítico
+    const crit = Math.random() < getCritChance(attacker.stats.precision);
+    if (crit) damage *= CRIT_MULTIPLIER;
+
+    // Reducción por durabilidad
+    damage *= (1 - getDurReduction(defender.stats.durability));
+
+    return {
+      damage: Math.max(1, Math.round(damage)),
+      crit,
+      bonusApplied: terrainMult > 1,
+      terrainMult
+    };
+  }
+    
+        /* =========================================================
+     SELECCIÓN DE ACCIÓN AUTOMÁTICA (IA / auto-play)
+     - Si el Ataque Básico está bloqueado, solo habilidades
+     - Fallback: si no hay habilidades disponibles, espera (pasa turno)
+     ========================================================= */
+      function pickAutomaticAction(side) {
+        if (!battle) return null;
+        const fighter = battle[side];
+        const isBasicLocked = (battle.basicAttackLocked || 0) > 0;
+
+        // Habilidades disponibles
+        const availableSkills = [];
+        fighter.cooldowns.forEach((cd, i) => {
+          if (cd === 0 && fighter.data.abilities[i]) availableSkills.push(i);
+        });
+
+        if (isBasicLocked) {
+          if (availableSkills.length > 0) {
+            const pick = availableSkills[Math.floor(Math.random() * availableSkills.length)];
+            return { type: 'skill', index: pick };
+          }
+          return null; // sin opciones → habrá que pasar turno
+        }
+
+        // Con básico disponible: 65% básico / 35% habilidad si hay
+        const useBasic = Math.random() < 0.65 || availableSkills.length === 0;
+        if (useBasic) return { type: 'basic' };
+        const pick = availableSkills[Math.floor(Math.random() * availableSkills.length)];
+        return { type: 'skill', index: pick };
       }
-    
-      function computeBasicAttackDamage(attacker, defender) {
-        const pwrBonus = PWR_BASIC_BONUS[attacker.stats.power] || 0;
-        let damage = BASIC_ATTACK_BASE + pwrBonus;
-    
-        // Bonus de terreno
-        if (hasStageBonus(attacker)) damage *= 1.15;
-    
-        // Crítico
-        const crit = Math.random() < getCritChance(attacker.stats.precision);
-        if (crit) damage *= CRIT_MULTIPLIER;
-    
-        // Reducción por durabilidad del defensor
-        damage *= (1 - getDurReduction(defender.stats.durability));
-    
-        return {
-          damage: Math.max(1, Math.round(damage)),
-          crit,
-          bonusApplied: hasStageBonus(attacker)
-        };
-      }
-    
-      function computeSkillDamage(attacker, defender, ability) {
-        let damage = Number(ability.damage) || 30;
-    
-        // Añadir un pequeño modificador por PWR
-        const pwrBonus = PWR_BASIC_BONUS[attacker.stats.power] || 0;
-        damage += pwrBonus * 0.6;
-    
-        // Bonus de terreno
-        if (hasStageBonus(attacker)) damage *= 1.15;
-    
-        // Crítico
-        const crit = Math.random() < getCritChance(attacker.stats.precision);
-        if (crit) damage *= CRIT_MULTIPLIER;
-    
-        // Reducción por durabilidad
-        damage *= (1 - getDurReduction(defender.stats.durability));
-    
-        return {
-          damage: Math.max(1, Math.round(damage)),
-          crit,
-          bonusApplied: hasStageBonus(attacker)
-        };
-      }
-    
+  
+
       /* =========================================================
          MÓDULO 3 — TURNO Y ACCIONES
          ========================================================= */
@@ -1924,8 +2069,14 @@
         let result = null;
     
         if (actionType === 'basic') {
+          // Verificar bloqueo por evento
+          if ((battle.basicAttackLocked || 0) > 0) {
+            toast('¡Ataque Básico bloqueado por Silencio de Hierro!', 'error');
+            battle.busy = false;
+            return;
+          }
           actionName = 'Ataque Básico';
-          result = computeBasicAttackDamage(attacker.data, defender.data);
+          result = computeBasicAttackDamage(attacker.data, defender.data, attacker);
         } else if (actionType === 'skill') {
           const ability = attacker.data.abilities[skillIndex];
           if (!ability || attacker.cooldowns[skillIndex] > 0) {
@@ -1933,7 +2084,7 @@
             return;
           }
           actionName = ability.name || `Habilidad ${skillIndex + 1}`;
-          result = computeSkillDamage(attacker.data, defender.data, ability);
+          result = computeSkillDamage(attacker.data, defender.data, ability, attacker);
           // Aplicar cooldown (guardamos CD + 1 para contar el turno actual como consumido)
           attacker.cooldowns[skillIndex] = (Number(ability.cooldown) || 0) + 1; // ← FIX
         } else {
@@ -1953,6 +2104,13 @@
           // Aplicar daño
           defender.hp = Math.max(0, defender.hp - result.damage);
           attacker.totalDamage += result.damage;
+
+          // Persistir daño del torneo en el roster
+          const attackerIdx = roster.findIndex((s) => s.id === attacker.data.id);
+          if (attackerIdx >= 0) {
+            roster[attackerIdx].tournamentDamage =
+              (roster[attackerIdx].tournamentDamage || 0) + result.damage;
+          }
     
           // Visual de impacto
           defenderEl.classList.add('is-hit');
@@ -1972,8 +2130,11 @@
           const cryText = attacker.data.battleCry
             ? `<span class="log-entry__cry">“${escapeHtml(attacker.data.battleCry)}”</span>`
             : '';
+            const bonusPct = result.terrainMult
+            ? Math.round((result.terrainMult - 1) * 100)
+            : 0;
           const bonusTag = result.bonusApplied
-            ? ' <span style="color:var(--ready-hi);font-weight:700;">[+15% Terreno]</span>'
+            ? ` <span style="color:var(--ready-hi);font-weight:700;">[+${bonusPct}% Terreno]</span>`
             : '';
           const critTag = result.crit
             ? ' <span style="color:var(--danger-hi);font-weight:700;">¡CRÍTICO!</span>'
@@ -2036,11 +2197,28 @@
         // (así el CD se cuenta en "sus propios turnos", no en los del rival)
         const incoming = battle[next];
         incoming.cooldowns = incoming.cooldowns.map((cd) => Math.max(0, cd - 1));
+
+        // ← NUEVO: consumir bloqueo de Ataque Básico
+    if ((battle.basicAttackLocked || 0) > 0) {
+      battle.basicAttackLocked = Math.max(0, battle.basicAttackLocked - 1);
+      if (battle.basicAttackLocked === 0) {
+        battle.basicAttackLockedBy = null;
+        pushLog({
+          side: null,
+          type: 'bonus',
+          html: `<span style="color:var(--ready-hi);font-weight:700;">✓ Silencio de Hierro disipado.</span> Ataque Básico disponible de nuevo.`
+        });
+      }
+    }
     
         // Refrescar
         renderBattleUI();
         updateActionPanel();
         announceTurn();
+          // Evaluar si corresponde disparar un evento
+        if (window.JJA_EventsRoulette && battle) {
+          window.JJA_EventsRoulette.maybeTriggerEvent(battle);
+        }
       }
     
       function announceTurn() {
@@ -2076,11 +2254,25 @@
         turnLabel.textContent = `Turno de ${active.data.standName}`;
         turnTimer.textContent = `Ronda ${toRoman(battle.round)}`;
     
-        // Ataque básico siempre disponible
-        btnBasicAttack.disabled = false;
-        const basicPwr = PWR_BASIC_BONUS[active.data.stats.power] || 0;
-        const estDamage = Math.round((BASIC_ATTACK_BASE + basicPwr) * (hasStageBonus(active.data) ? 1.15 : 1));
-        basicAttackMeta.textContent = `≈${estDamage} daño`;
+            // Ataque básico — sujeto a bloqueo por eventos
+    const isBasicLocked = (battle.basicAttackLocked || 0) > 0;
+
+    if (isBasicLocked) {
+      btnBasicAttack.disabled = true;
+      btnBasicAttack.classList.add('is-locked');
+      btnBasicAttack.title = '¡Bloqueado por Silencio de Hierro! Solo puedes usar habilidades.';
+      basicAttackMeta.innerHTML =
+        `<span style="color:var(--danger-hi);font-weight:700;">⛓ Bloqueado (${battle.basicAttackLocked} turno${battle.basicAttackLocked > 1 ? 's' : ''})</span>`;
+    } else {
+      btnBasicAttack.disabled = false;
+      btnBasicAttack.classList.remove('is-locked');
+      btnBasicAttack.removeAttribute('title');
+      const basicPwr = PWR_BASIC_BONUS[active.data.stats.power] || 0;
+      const estDamage = Math.round(
+        (BASIC_ATTACK_BASE + basicPwr) * getTerrainMultiplier(active.data, active)
+      );
+      basicAttackMeta.textContent = `≈${estDamage} daño`;
+    }
     
         // Habilidades
         const skillBtns = [skillBtn0, skillBtn1, skillBtn2];
@@ -2156,6 +2348,13 @@
         
             // Marcar al perdedor como derrotado (solo Battle Royale)
             markDefeated(loser.data.id);
+
+            // Persistir el HP con el que sobrevivió el ganador
+              const winnerIdx = roster.findIndex((s) => s.id === winner.data.id);
+              if (winnerIdx >= 0) {
+                roster[winnerIdx].lastHp = winner.hp;
+              }
+              saveRoster();
         
             victoryKicker.textContent = `K.O. · ${loser.data.standName} derrotado`;
             victoryTitle.textContent = '¡VICTORIA!';
@@ -2196,6 +2395,9 @@
          MÓDULO 3 — SALIDA / REVANCHA
          ========================================================= */
          function exitBattleToTournament() {
+          if (window.JJA_EventsRoulette) {
+            window.JJA_EventsRoulette.closeModal();
+          }
             closeVictoryModal();
             battleView.hidden = true;
             tournamentView.hidden = false;                      // ← FIX: reaparece la vista torneo
@@ -2241,6 +2443,9 @@
           }
     
           function exitBattleToRoster() {
+            if (window.JJA_EventsRoulette) {
+              window.JJA_EventsRoulette.closeModal();
+            }
             closeVictoryModal();
             battleView.hidden = true;
             tournamentView.hidden = true;                       // ← FIX: también se oculta al ir al roster
@@ -2299,8 +2504,129 @@
         bindEvents();
         initModule2();
         initModule3();
-        initModule4(); // ← NUEVO
+        initModule4();
+        initEventsConfig(); // ← NUEVO
+      }
+    
+      function initEventsConfig() {
+        const radios = document.querySelectorAll('input[name="eventFreq"]');
+        const numInput = document.getElementById('eventEveryRounds');
+        if (!radios.length || !window.JJA_EventsRoulette) return;
+    
+        // Sincronizar UI con config persistida
+        const cfg = window.JJA_EventsRoulette.getConfig();
+        radios.forEach((r) => { r.checked = r.value === cfg.frequency; });
+        if (numInput) numInput.value = cfg.dynamicEveryRounds;
+    
+        // Listeners
+        radios.forEach((r) => {
+          r.addEventListener('change', () => {
+            if (r.checked) {
+              window.JJA_EventsRoulette.setFrequency(r.value, Number(numInput?.value));
+            }
+          });
+        });
+        if (numInput) {
+          numInput.addEventListener('change', () => {
+            const active = document.querySelector('input[name="eventFreq"]:checked');
+            window.JJA_EventsRoulette.setFrequency(
+              active ? active.value : 'perBattle',
+              Number(numInput.value)
+            );
+          });
+        }
       }
   
+        /* =========================================================
+     APLICACIÓN DE EVENTO AL COMBATE ACTIVO
+     Llamada por JJA_EventsRoulette.applySelected()
+     ========================================================= */
+  function applyEventToBattle(event) {
+    if (!battle || battle.finished) {
+      toast('No hay combate activo para aplicar el evento.', 'error');
+      return;
+    }
+    if (!event || typeof event.apply !== 'function') {
+      toast('Evento inválido.', 'error');
+      return;
+    }
+
+    // Guardar snapshot para mostrar deltas visuales
+    const before = {
+      p1Hp: battle.p1.hp,
+      p2Hp: battle.p2.hp
+    };
+
+    // Aplicar el efecto (muta battle)
+    const result = event.apply(battle) || {};
+
+    // Refrescar barras de HP
+    updateHpBar('p1');
+    updateHpBar('p2');
+
+    // Refrescar panel de acciones (por si hubo cambios de cooldown)
+    updateActionPanel();
+    renderBattleUI();
+
+    // Feedback visual: sacudida a los afectados por daño
+    const side = result.side || 'both';
+    if (side === 'p1' || side === 'both') {
+      fighterP1.classList.add('is-hit');
+      setTimeout(() => fighterP1.classList.remove('is-hit'), 600);
+    }
+    if (side === 'p2' || side === 'both') {
+      fighterP2.classList.add('is-hit');
+      setTimeout(() => fighterP2.classList.remove('is-hit'), 600);
+    }
+
+    // Números flotantes si hubo daño o cura
+    const ex = result.extra || {};
+    if (ex.type === 'damage-both') {
+      showDamageFloat(fighterP1, ex.dmgP1, false);
+      showDamageFloat(fighterP2, ex.dmgP2, false);
+    } else if (ex.type === 'karma') {
+      // El más fuerte recibe daño; el más débil recibe cura (mostrar como daño negativo)
+      const p1PctBefore = before.p1Hp / battle.p1.maxHp;
+      const p2PctBefore = before.p2Hp / battle.p2.maxHp;
+      const strongerIsP1 = p1PctBefore >= p2PctBefore;
+      showDamageFloat(strongerIsP1 ? fighterP1 : fighterP2, ex.dmg, false);
+      const healEl = strongerIsP1 ? fighterP2 : fighterP1;
+      const healFloat = document.createElement('div');
+      healFloat.className = 'damage-float damage-float--heal';
+      healFloat.textContent = `+${ex.healed}`;
+      healEl.appendChild(healFloat);
+      setTimeout(() => healFloat.remove(), 1200);
+    }
+
+    // Log en el battle log
+    pushLog({
+      side: side === 'p1' ? 'p1' : side === 'p2' ? 'p2' : null,
+      type: 'bonus',
+      html: `<span style="color:var(--accent-magenta);font-weight:700;">🌪 ${escapeHtml(event.name)}</span> — ${result.log || event.short}`
+    });
+
+    // Verificar si el evento causó un K.O.
+    if (battle.p1.hp <= 0 || battle.p2.hp <= 0) {
+      battle.finished = true;
+      const winnerSide = battle.p1.hp <= 0 ? 'p2' : 'p1';
+      const winner = battle[winnerSide];
+      pushLog({
+        side: winnerSide,
+        type: 'ko',
+        html: `¡K.O. por evento! <strong>${escapeHtml(winner.data.standName)}</strong> gana el combate.`
+      });
+      renderBattleUI();
+      updateActionPanel();
+      setTimeout(() => showVictoryModal(winnerSide), 900);
+    }
+  }
+
     document.addEventListener('DOMContentLoaded', init);
+      /* =========================================================
+     API PÚBLICA PARA MÓDULOS EXTERNOS (events-roulette.js)
+     ========================================================= */
+  window.JJA_App = {
+    getBattle: () => battle,
+    applyEventToBattle: applyEventToBattle
+  };
   })();
