@@ -232,7 +232,8 @@
       roster = roster.map((s) => ({
         ...s,
         tournamentDamage: 0,
-        lastHp: null
+        lastHp: null,
+        tournamentBattles: 0
       }));
       tournamentRound = 1;
       saveRoster();
@@ -246,6 +247,7 @@
         isDefeated: false,
         defeatedAt: null,
         lastHp: null,
+        tournamentBattles: 0,
         tournamentDamage: 0
       }));
       tournamentRound = 1;
@@ -317,7 +319,8 @@
         isDefeated: false,
         defeatedAt: null,
         lastHp: null,
-        tournamentDamage: 0
+        tournamentDamage: 0,
+        tournamentBattles: 0
       };
     });
     tournamentRound = 1;
@@ -361,7 +364,8 @@
       championDamage.textContent = totalDamage > 0 ? String(totalDamage) : '0';
   
       // Combates = rondas que duró el torneo
-      championBattles.textContent = String(tournamentRound);
+      const battlesCount = Number(survivor.tournamentBattles) || 0;
+      championBattles.textContent = String(battlesCount);
   
       championBackdrop.hidden = false;
     }
@@ -570,14 +574,9 @@
         ? `<img class="stand-card__image" src="${escapeHtml(imgSrc)}" alt="${escapeHtml(stand.standName)}">`
         : `<div class="stand-card__image stand-card__image--empty">🂠</div>`;
   
-      const chipsMarkup = STAT_KEYS.map((k) => {
-        const grade = stand.stats[k];
-        return `
-          <div class="stat-chip" data-grade="${escapeHtml(grade)}" title="${escapeHtml(STAT_LABEL[k])}: ${escapeHtml(grade)}">
-            <span class="stat-chip__label">${STAT_SHORT[k]}</span>
-            <span class="stat-chip__value">${escapeHtml(grade)}</span>
-          </div>`;
-      }).join('');
+        const radarMarkup = `
+        <div class="radar-chart radar-chart--card" data-radar-for="${escapeHtml(stand.id)}"></div>
+      `;
   
       const hp = computeHP(stand.stats.durability, stand.level || DEFAULT_LEVEL);
       const cry = stand.battleCry
@@ -602,19 +601,27 @@
           <p class="stand-card__owner">${escapeHtml(stand.artistName)}</p>
           <h3 class="stand-card__name">${escapeHtml(stand.standName)}</h3>
           ${cry}
-          <div class="stat-chips">${chipsMarkup}</div>
+          ${radarMarkup}
           <div class="stand-card__actions">
             <button type="button" class="btn btn--ghost" data-action="edit">✎ Editar</button>
             <button type="button" class="btn btn--danger" data-action="delete">✕ Eliminar</button>
           </div>
         </div>
       `;
+
+          // Inyectar el radar SVG (necesita estar en el DOM antes)
+    const radarSlot = card.querySelector(`[data-radar-for="${stand.id}"]`);
+    if (radarSlot) {
+      renderRadarInto(radarSlot, stand.stats, { size: 100, compact: true });
+    }
   
       card.querySelector('[data-action="edit"]').addEventListener('click', () => openModal(stand.id));
       card.querySelector('[data-action="delete"]').addEventListener('click', () => deleteStand(stand.id));
   
       return card;
     }
+
+
   
     /* =========================================================
        TOASTS
@@ -689,7 +696,13 @@
         const cd  = block.querySelector('.ability-cooldown');
         if (dmg) dmg.value = 30;
         if (cd)  cd.value = 1;
-      });
+            // Reset de las píldoras de tipo
+            const typeRadios = block.querySelectorAll('.ability-type');
+            typeRadios.forEach((r) => {
+              r.checked = (r.value === 'damage');
+              r.closest('.type-pill')?.classList.toggle('is-checked', r.checked);
+            });
+          });
 
           // Reset afinidad personalizada
         if (customAffinityField) customAffinityField.hidden = true;
@@ -733,6 +746,13 @@
         if (dmgEl)  dmgEl.value  = ab.damage ?? 30;
         if (cdEl)   cdEl.value   = ab.cooldown ?? 1;
         if (descEl) descEl.value = ab.description || '';
+              // Restaurar el tipo de habilidad
+      const blockTypeRadios = block.querySelectorAll('.ability-type');
+      const savedType = ab.type || 'damage';
+      blockTypeRadios.forEach((r) => {
+        r.checked = (r.value === savedType);
+        r.closest('.type-pill')?.classList.toggle('is-checked', r.checked);
+      });
       }
     }
   
@@ -743,12 +763,16 @@
         stats[k] = sel ? sel.value : 'B';
       });
   
-      const abilities = $$('.ability-block').map((block) => ({
-        name: (block.querySelector('.ability-name')?.value || '').trim(),
-        damage: clampNumber(block.querySelector('.ability-damage')?.value, 15, 60, 30),
-        cooldown: clampNumber(block.querySelector('.ability-cooldown')?.value, 0, 3, 1),
-        description: (block.querySelector('.ability-desc')?.value || '').trim()
-      }));
+      const abilities = $$('.ability-block').map((block) => {
+        const checkedType = block.querySelector('.ability-type:checked');
+        return {
+          name: (block.querySelector('.ability-name')?.value || '').trim(),
+          damage: clampNumber(block.querySelector('.ability-damage')?.value, 15, 60, 30),
+          cooldown: clampNumber(block.querySelector('.ability-cooldown')?.value, 0, 3, 1),
+          description: (block.querySelector('.ability-desc')?.value || '').trim(),
+          type: checkedType ? checkedType.value : 'damage' // 'damage' | 'heal' | 'shield'
+        };
+      });
   
       return {
         artistName: artistNameInput.value.trim(),
@@ -809,6 +833,7 @@
         defeatedAt: null,
         lastHp: null,
         tournamentDamage: 0,
+        tournamentBattles: 0,
         id: editingId || uid(),
         artistName: data.artistName,
         standName: data.standName,
@@ -832,11 +857,11 @@
           roster[idx] = {
             ...existing,
             ...payload,
-            // Preservar estado de torneo al editar
             isDefeated: existing.isDefeated,
             defeatedAt: existing.defeatedAt,
             lastHp: existing.lastHp,
-            tournamentDamage: existing.tournamentDamage
+            tournamentDamage: existing.tournamentDamage,
+            tournamentBattles: existing.tournamentBattles || 0
           };
         }
       } else {
@@ -962,17 +987,18 @@
       });
   
       const abilities = Array.isArray(raw.abilities)
-        ? raw.abilities.slice(0, 3).map((ab) => ({
-            name: String(ab?.name || '').slice(0, 60),
-            damage: clampNumber(ab?.damage, 15, 60, 30),
-            cooldown: clampNumber(ab?.cooldown, 0, 3, 1),
-            description: String(ab?.description || '').slice(0, 200)
-          }))
-        : [];
-  
-      while (abilities.length < 3) {
-        abilities.push({ name: '', damage: 30, cooldown: 1, description: '' });
-      }
+      ? raw.abilities.slice(0, 3).map((ab) => ({
+          name: String(ab?.name || '').slice(0, 60),
+          damage: clampNumber(ab?.damage, 15, 60, 30),
+          cooldown: clampNumber(ab?.cooldown, 0, 3, 1),
+          description: String(ab?.description || '').slice(0, 200),
+          type: ['damage', 'heal', 'shield'].includes(ab?.type) ? ab.type : 'damage'
+        }))
+      : [];
+
+    while (abilities.length < 3) {
+      abilities.push({ name: '', damage: 30, cooldown: 1, description: '', type: 'damage' });
+    }
   
       return {
         id: typeof raw.id === 'string' && raw.id ? raw.id : uid(),
@@ -990,6 +1016,7 @@
         isDefeated: Boolean(raw.isDefeated),
         defeatedAt: Number(raw.defeatedAt) || null,
         lastHp: Number(raw.lastHp) || null,
+        tournamentBattles: Number(raw.tournamentBattles) || 0,
         tournamentDamage: Number(raw.tournamentDamage) || 0,
       };
     }
@@ -1020,7 +1047,8 @@
             isDefeated: false,
             defeatedAt: null,
             lastHp: null,
-            tournamentDamage: 0
+            tournamentDamage: 0,
+            tournamentBattles: 0
           }));
           tournamentRound = 1;
           saveRoster();
@@ -1053,10 +1081,235 @@
       toast('Roster limpiado por completo.', 'info');
     }
   
+        /* =========================================================
+     RADAR CHART HEXAGONAL
+     - Sigla del eje (PWR, SPD, ...) arriba
+     - Letra del rango (A/B/C/D/E) debajo, destacada en dorado
+     - Círculo de fondo opcional (arena de combate)
+     ========================================================= */
+    function buildRadarSVG(stats, opts = {}) {
+    const size = opts.size || 100;
+    const compact = opts.compact !== false;
+    const withBackground = opts.withBackground === true;
+
+    const cx = size / 2;
+    const cy = size / 2;
+    const radius = size * 0.34;        // radio del polígono de datos
+    const bgRadius = size * 0.46;      // radio del círculo de fondo
+
+    // Radios diferenciados para sigla y rango (evita solapamiento)
+    const siglaRadius = size * 0.44;   // la sigla (PWR) va un poco MÁS AFUERA
+    const rangoRadius = size * 0.40;   // el rango (A) va un poco MÁS ADENTRO que la sigla
+
+    const totalAxes = RADAR_AXES.length;
+    const angleStep = (Math.PI * 2) / totalAxes;
+
+    const values = RADAR_AXES.map((axis) => {
+      const g = stats[axis];
+      return RADAR_GRADES[g] ?? RADAR_NONE;
+    });
+
+    const polarToXY = (angle, r) => [
+      cx + r * Math.cos(angle - Math.PI / 2),
+      cy + r * Math.sin(angle - Math.PI / 2)
+    ];
+
+    // --- Círculo de fondo (arena) ---
+    let bgSvg = '';
+    if (withBackground) {
+      bgSvg = `<circle class="radar-bg" cx="${cx}" cy="${cy}" r="${bgRadius}" />`;
+    }
+
+    // --- Anillos de la grilla ---
+    let ringsSvg = '';
+    for (let level = 1; level <= RADAR_MAX; level++) {
+      const r = (radius * level) / RADAR_MAX;
+      const pts = [];
+      for (let i = 0; i < totalAxes; i++) {
+        const [x, y] = polarToXY(i * angleStep, r);
+        pts.push(`${x.toFixed(2)},${y.toFixed(2)}`);
+      }
+      ringsSvg += `<polygon class="radar-grid-ring" points="${pts.join(' ')}" />`;
+    }
+
+    // --- Ejes radiales ---
+    let axesSvg = '';
+    for (let i = 0; i < totalAxes; i++) {
+      const [x, y] = polarToXY(i * angleStep, radius);
+      axesSvg += `<line class="radar-grid-axis" x1="${cx}" y1="${cy}" x2="${x.toFixed(2)}" y2="${y.toFixed(2)}" />`;
+    }
+
+    // --- Polígono de datos ---
+    const dataPts = [];
+    const verticesSvg = [];
+    values.forEach((v, i) => {
+      const r = (radius * v) / RADAR_MAX;
+      const [x, y] = polarToXY(i * angleStep, r);
+      dataPts.push(`${x.toFixed(2)},${y.toFixed(2)}`);
+      verticesSvg.push(
+        `<circle class="radar-vertex" cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="1.4" />`
+      );
+    });
+    const polygonSvg = `<polygon class="radar-polygon" points="${dataPts.join(' ')}" />`;
+
+        // --- Etiquetas: sigla ARRIBA y rango ABAJO en el mismo <text> con 2 <tspan> ---
+    // Un solo <text> por eje, con dos <tspan> apilados verticalmente mediante
+    // atributos `x`/`dy` para garantizar que NUNCA se solapen.
+    let labelsSvg = '';
+    if (compact) {
+      // Radio donde se ancla la etiqueta completa (a medio camino entre
+      // el polígono de datos y el borde exterior del viewBox).
+      const labelAnchorRadius = size * 0.46;
+
+      RADAR_AXES.forEach((axis, i) => {
+        const angle = i * angleStep;
+        const [lx, ly] = polarToXY(angle, labelAnchorRadius);
+
+        const label = RADAR_LABELS[axis];
+        const grade = stats[axis] || '-';
+
+        // Las dos líneas se apilan verticalmente dentro del mismo <text>:
+        //   - 1ª línea: sigla (PWR) en tamaño pequeño
+        //   - 2ª línea: rango (A/B/C) en tamaño grande dorado
+        // La separación real (12-14px) se controla con `dy` y `font-size`.
+        labelsSvg += `
+          <text x="${lx.toFixed(2)}" y="${ly.toFixed(2)}" text-anchor="middle">
+            <tspan
+              class="radar-axis-label"
+              x="${lx.toFixed(2)}"
+              dy="-1px"
+            >${label}</tspan>
+            <tspan
+              class="radar-axis-grade"
+              x="${lx.toFixed(2)}"
+              dy="13px"
+            >${grade}</tspan>
+          </text>
+        `;
+      });
+    }
+
+    return `
+      <svg viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        ${bgSvg}
+        ${ringsSvg}
+        ${axesSvg}
+        ${polygonSvg}
+        ${verticesSvg.join('')}
+        ${labelsSvg}
+      </svg>
+    `;
+  }
+
+  /** Inyecta el radar dentro de un contenedor existente */
+  function renderRadarInto(container, stats, opts = {}) {
+    if (!container) return;
+    container.innerHTML = buildRadarSVG(stats, opts);
+  }
+
+    /* =========================================================
+     TOOLTIP NARRATIVO DE HABILIDADES
+     ========================================================= */
+     const ABILITY_KIND_LABELS = {
+      damage: 'Ataque',
+      heal:   'Soporte / Curación',
+      shield: 'Escudo / Estado'
+    };
+  
+    /**
+     * Deduce el tipo de habilidad a partir de su nombre/descripción/damage.
+     * Es heurístico pero suficiente para el stream.
+     */
+    function inferAbilityKind(ability) {
+      // 1) Prioridad máxima: tipo explícito definido por el usuario
+      if (ability && ['damage', 'heal', 'shield'].includes(ability.type)) {
+        return ability.type;
+      }
+  
+      // 2) Fallback heurístico (compatibilidad con Stands antiguos sin type)
+      const text = `${ability?.name || ''} ${ability?.description || ''}`.toLowerCase();
+  
+      const healWords = ['cura', 'curar', 'heal', 'restaur', 'sanar', 'sanación', 'regenera', 'revive', 'revivir'];
+      const shieldWords = ['escudo', 'barrera', 'guardia', 'protec', 'blindaje', 'defensa', 'shield', 'bloqueo'];
+      const statusWords = ['paraliz', 'congel', 'stun', 'silencio', 'veneno', 'envenen', 'sangrado', 'quemar', 'ralentiz', 'acelerar', 'potenciar'];
+      const attackWords = ['golpe', 'ataque', 'daño', 'impacto', 'ráfaga', 'rafaga', 'rush', 'disparo', 'onda', 'explosión', 'explosion', 'corte', 'puño', 'puñetazo', 'patada'];
+  
+      if (healWords.some((w) => text.includes(w))) return 'heal';
+      if (shieldWords.some((w) => text.includes(w))) return 'shield';
+      if (statusWords.some((w) => text.includes(w))) return 'shield'; // agrupamos status bajo shield visualmente
+      if (attackWords.some((w) => text.includes(w))) return 'damage';
+  
+      const dmg = Number(ability?.damage) || 0;
+      if (dmg >= 40) return 'damage';
+      if (dmg <= 20) return 'heal';
+      return 'shield';
+    }
+  
+    function showSkillTooltip(targetEl, ability, index) {
+      if (!skillTooltip || !ability) return;
+  
+      const roman = ['Ⅰ', 'Ⅱ', 'Ⅲ'][index] || '•';
+      tooltipIcon.textContent = roman;
+      tooltipName.textContent = ability.name || `Habilidad ${roman}`;
+  
+      const kind = inferAbilityKind(ability);
+      tooltipType.textContent = ABILITY_KIND_LABELS[kind] || 'Habilidad';
+      tooltipType.setAttribute('data-kind', kind);
+  
+      tooltipDesc.textContent = ability.description || '';
+      tooltipDamage.textContent = `${ability.damage || 0} daño`;
+      tooltipCd.textContent = `CD ${ability.cooldown || 0} turno${(ability.cooldown || 0) === 1 ? '' : 's'}`;
+  
+      // Posicionamiento
+      skillTooltip.hidden = false;
+      // Forzar reflow para medir tamaño
+      void skillTooltip.offsetWidth;
+  
+      const rect = targetEl.getBoundingClientRect();
+      const tipW = skillTooltip.offsetWidth;
+      const tipH = skillTooltip.offsetHeight;
+  
+      // Intentar arriba; si no cabe, abajo
+      const spaceAbove = rect.top;
+      const placeBelow = spaceAbove < tipH + 20;
+      const top = placeBelow ? rect.bottom + 12 : rect.top - tipH - 12;
+  
+      // Centrado horizontal con clamping a la ventana
+      let left = rect.left + rect.width / 2 - tipW / 2;
+      left = Math.max(12, Math.min(left, window.innerWidth - tipW - 12));
+  
+      skillTooltip.style.top = `${top}px`;
+      skillTooltip.style.left = `${left}px`;
+      skillTooltip.setAttribute('data-arrow', placeBelow ? 'top' : 'bottom');
+      skillTooltip.style.setProperty('--arrow-x', `${rect.left + rect.width / 2 - left}px`);
+  
+      skillTooltip.classList.add('is-visible');
+    }
+  
+    function hideSkillTooltip() {
+      if (!skillTooltip) return;
+      skillTooltip.classList.remove('is-visible');
+      // Pequeño delay para permitir la transición
+      setTimeout(() => {
+        if (!skillTooltip.classList.contains('is-visible')) {
+          skillTooltip.hidden = true;
+        }
+      }, 200);
+    }
+
     /* =========================================================
        EVENTOS
        ========================================================= */
     function bindEvents() {
+          // Sincronizar clases .is-checked en las píldoras de tipo
+    document.addEventListener('change', (e) => {
+      if (e.target && e.target.classList.contains('ability-type')) {
+        const name = e.target.name;
+        document.querySelectorAll(`input[name="${name}"]`).forEach((r) => {
+          r.closest('.type-pill')?.classList.toggle('is-checked', r.checked);
+        });
+      }
+    });
 
         // Afinidad personalizada (toggle)
         if (affinitySelect) {
@@ -1565,7 +1818,10 @@
       affinity: stand.affinity,
       battleCry: stand.battleCry || '',
       stats: { ...stand.stats },
-      abilities: (stand.abilities || []).map((a) => ({ ...a })),
+      abilities: (stand.abilities || []).map((a) => ({
+        ...a,
+        type: ['damage', 'heal', 'shield'].includes(a.type) ? a.type : 'damage'
+      })),
       image: stand.image || null,
       level: stand.level || DEFAULT_LEVEL,
       hp: computeHP(stand.stats.durability, stand.level || DEFAULT_LEVEL),
@@ -1773,8 +2029,8 @@
         const p2Hp = computeHP(p2.stats.durability, p2.level || DEFAULT_LEVEL);
     
         battle = {
-          p1: { data: p1, hp: p1Hp, maxHp: p1Hp, cooldowns: [0, 0, 0], totalDamage: 0 },
-          p2: { data: p2, hp: p2Hp, maxHp: p2Hp, cooldowns: [0, 0, 0], totalDamage: 0 },
+          p1: { data: p1, hp: p1Hp, maxHp: p1Hp, cooldowns: [0, 0, 0], totalDamage: 0, shield: false },
+          p2: { data: p2, hp: p2Hp, maxHp: p2Hp, cooldowns: [0, 0, 0], totalDamage: 0, shield: false },
           stage: stage || null,
           activeSide: determineInitiative(p1, p2),
           turn: 1,
@@ -1785,7 +2041,8 @@
           basicAttackLocked: 0,     // ← NUEVO: turnos restantes de bloqueo
           basicAttackLockedBy: null // ← NUEVO: nombre del evento (para el tooltip)
         };
-    
+        
+
         // === Transición de vistas ===
         versusScreen.hidden = true;
         tournamentView.hidden = true;                       // ← FIX: ocultar el contenedor padre
@@ -1815,6 +2072,14 @@
 
         // Anunciar primer turno
         announceTurn();
+            // Incrementar el contador individual de combates del torneo
+          [p1, p2].forEach((fighter) => {
+            const idx = roster.findIndex((s) => s.id === fighter.id);
+            if (idx >= 0) {
+              roster[idx].tournamentBattles = (roster[idx].tournamentBattles || 0) + 1;
+            }
+          });
+          saveRoster();
         updateActionPanel();
       }
     
@@ -1845,10 +2110,15 @@
             battleOwnerP2.textContent = p2.data.artistName;
             battleAffP2.textContent = p2.data.affinity;
             setSprite(battleSpriteP2, spriteFallbackP2, p2.data.image, p2.data.standName);
-        
+              // Radar charts en la arena
+              if (radarP1) renderRadarInto(radarP1, battle.p1.data.stats, { size: 140, compact: true, withBackground: true });
+              if (radarP2) renderRadarInto(radarP2, battle.p2.data.stats, { size: 140, compact: true, withBackground: true });
             // Limpiar estados previos
             fighterP1.classList.remove('is-active', 'is-waiting', 'is-defeated');
             fighterP2.classList.remove('is-active', 'is-waiting', 'is-defeated');
+            // Refrescar indicador de escudo
+            fighterP1.classList.toggle('has-shield', !!battle.p1.shield);
+            fighterP2.classList.toggle('has-shield', !!battle.p2.shield);
         
             // Marcar derrotado (si aplica)
             if (p1.hp <= 0) fighterP1.classList.add('is-defeated');
@@ -2084,12 +2354,85 @@
             return;
           }
           actionName = ability.name || `Habilidad ${skillIndex + 1}`;
+    
+          const kind = ability.type || 'damage';
+    
+          // ---------- HEAL ----------
+          if (kind === 'heal') {
+            const healPct = 0.22; // 22% del maxHp
+            const rawHeal = Math.round(attacker.maxHp * healPct);
+            const before = attacker.hp;
+            attacker.hp = Math.min(attacker.maxHp, attacker.hp + rawHeal);
+            const healed = attacker.hp - before;
+    
+            // Cooldown
+            attacker.cooldowns[skillIndex] = (Number(ability.cooldown) || 0) + 1;
+    
+            // Animación de curación sobre el PROPIO atacante
+            const selfEl = attackerSide === 'p1' ? fighterP1 : fighterP2;
+            const selfWrap = selfEl;
+            selfEl.classList.add('is-healing');
+            setTimeout(() => selfEl.classList.remove('is-healing'), 1000);
+    
+            // Número flotante de cura
+            const healFloat = document.createElement('div');
+            healFloat.className = 'damage-float damage-float--heal';
+            healFloat.textContent = `+${healed}`;
+            selfWrap.appendChild(healFloat);
+            setTimeout(() => healFloat.remove(), 1200);
+    
+            updateHpBar(attackerSide);
+    
+            const cryText = attacker.data.battleCry
+              ? `<span class="log-entry__cry">“${escapeHtml(attacker.data.battleCry)}”</span>`
+              : '';
+            pushLog({
+              side: attackerSide,
+              type: 'heal',
+              html: `<strong>${escapeHtml(attacker.data.standName)}</strong> usa <em>${escapeHtml(actionName)}</em> ` +
+                    `y recupera <span style="color:var(--ready-hi);font-weight:700;">+${healed}</span> HP.` +
+                    cryText
+            });
+    
+            // No hay daño ni verificación de K.O. por parte del atacante
+            battle.busy = false;
+            passTurn();
+            return;
+          }
+    
+          // ---------- SHIELD ----------
+          if (kind === 'shield') {
+            attacker.shield = true;
+    
+            // Cooldown
+            attacker.cooldowns[skillIndex] = (Number(ability.cooldown) || 0) + 1;
+    
+            // Animación de escudo sobre el PROPIO atacante
+            const selfEl = attackerSide === 'p1' ? fighterP1 : fighterP2;
+            selfEl.classList.add('is-shielding', 'has-shield');
+            setTimeout(() => selfEl.classList.remove('is-shielding'), 1000);
+    
+            const cryText = attacker.data.battleCry
+              ? `<span class="log-entry__cry">“${escapeHtml(attacker.data.battleCry)}”</span>`
+              : '';
+            pushLog({
+              side: attackerSide,
+              type: 'shield',
+              html: `<strong>${escapeHtml(attacker.data.standName)}</strong> activa <em>${escapeHtml(actionName)}</em> ` +
+                    `y entra en <span style="color:var(--accent-cyan);font-weight:700;">guarda defensiva</span>. ` +
+                    `El próximo daño recibido se reducirá un 50%.` +
+                    cryText
+            });
+    
+            battle.busy = false;
+            passTurn();
+            return;
+          }
+    
+          // ---------- DAMAGE (default) ----------
           result = computeSkillDamage(attacker.data, defender.data, ability, attacker);
-          // Aplicar cooldown (guardamos CD + 1 para contar el turno actual como consumido)
-          attacker.cooldowns[skillIndex] = (Number(ability.cooldown) || 0) + 1; // ← FIX
-        } else {
-          battle.busy = false;
-          return;
+          // Aplicar cooldown
+          attacker.cooldowns[skillIndex] = (Number(ability.cooldown) || 0) + 1;
         }
     
         // Ejecutar visualmente
@@ -2101,9 +2444,23 @@
         setTimeout(() => attackerEl.classList.remove('is-attacking'), 500);
     
         setTimeout(() => {
-          // Aplicar daño
-          defender.hp = Math.max(0, defender.hp - result.damage);
-          attacker.totalDamage += result.damage;
+                // Aplicar daño — con posible reducción por escudo
+      let finalDamage = result.damage;
+      const defenderEl = defenderSide === 'p1' ? fighterP1 : fighterP2;
+
+      if (defender.shield) {
+        finalDamage = Math.round(finalDamage * 0.5);
+        defender.shield = false; // se consume al primer golpe
+        defenderEl.classList.remove('has-shield');
+        pushLog({
+          side: defenderSide,
+          type: 'shield',
+          html: `<span style="color:var(--accent-cyan);font-weight:700;">🛡 Guardia de ${escapeHtml(defender.data.standName)}</span> absorbe la mitad del impacto.`
+        });
+      }
+
+      defender.hp = Math.max(0, defender.hp - finalDamage);
+      attacker.totalDamage += finalDamage;
 
           // Persistir daño del torneo en el roster
           const attackerIdx = roster.findIndex((s) => s.id === attacker.data.id);
@@ -2121,7 +2478,7 @@
           }, 650);
     
           // Número flotante de daño
-          showDamageFloat(defenderSpriteWrap, result.damage, result.crit);
+            showDamageFloat(defenderEl, finalDamage, result.crit);
     
           // Actualizar UI
           updateHpBar(defenderSide);
@@ -2140,13 +2497,13 @@
             ? ' <span style="color:var(--danger-hi);font-weight:700;">¡CRÍTICO!</span>'
             : '';
     
-          pushLog({
-            side: attackerSide,
-            type: result.crit ? 'crit' : (result.bonusApplied ? 'bonus' : ''),
-            html: `<strong>${escapeHtml(attacker.data.standName)}</strong> usa <em>${escapeHtml(actionName)}</em> ` +
-                  `causando <span class="log-entry__dmg${result.crit ? ' log-entry__dmg--crit' : ''}">${result.damage}</span> de daño.` +
-                  bonusTag + critTag + cryText
-          });
+            pushLog({
+              side: attackerSide,
+              type: result.crit ? 'crit' : (result.bonusApplied ? 'bonus' : ''),
+              html: `<strong>${escapeHtml(attacker.data.standName)}</strong> usa <em>${escapeHtml(actionName)}</em> ` +
+                    `causando <span class="log-entry__dmg${result.crit ? ' log-entry__dmg--crit' : ''}">${finalDamage}</span> de daño.` +
+                    bonusTag + critTag + cryText
+            });
     
           // ¿K.O.?
           if (defender.hp <= 0) {
@@ -2312,6 +2669,20 @@
     
           // Rebind del handler (para no acumular listeners)
           btn.onclick = () => performAction(battle.activeSide, 'skill', idx);
+
+          // Rebinding de tooltips (con datos del Stand activo actual)
+          btn.onmouseenter = () => showSkillTooltip(btn, ability, idx);
+          btn.onmouseleave = () => hideSkillTooltip();
+          btn.onfocus = () => showSkillTooltip(btn, ability, idx);
+          btn.onblur = () => hideSkillTooltip();
+
+          // Si la habilidad está en cooldown, no mostramos tooltip de datos falsos
+          if (cd > 0) {
+            btn.onmouseenter = null;
+            btn.onmouseleave = null;
+            btn.onfocus = null;
+            btn.onblur = null;
+          }
         });
     
         // Rebind ataque básico
@@ -2395,6 +2766,7 @@
          MÓDULO 3 — SALIDA / REVANCHA
          ========================================================= */
          function exitBattleToTournament() {
+          hideSkillTooltip();
           if (window.JJA_EventsRoulette) {
             window.JJA_EventsRoulette.closeModal();
           }
@@ -2420,6 +2792,7 @@
           }
     
           function rematchFlow() {
+            hideSkillTooltip();
             closeVictoryModal();
             battleView.hidden = true;
             tournamentView.hidden = false;                      // ← FIX: mostrar torneo para el re-sorteo
@@ -2443,6 +2816,7 @@
           }
     
           function exitBattleToRoster() {
+            hideSkillTooltip();
             if (window.JJA_EventsRoulette) {
               window.JJA_EventsRoulette.closeModal();
             }
@@ -2482,6 +2856,37 @@
       function initModule3() {
         bindModule3Events();
       }
+
+        /* =========================================================
+     RADAR CHART — CONSTANTES
+     ========================================================= */
+  const RADAR_GRADES = { A: 5, B: 4, C: 3, D: 2, E: 1 };
+  const RADAR_NONE = 0;
+  const RADAR_AXES = ['power', 'speed', 'range', 'durability', 'precision', 'potential'];
+  const RADAR_LABELS = {
+    power: 'PWR',
+    speed: 'SPD',
+    range: 'RNG',
+    durability: 'DUR',
+    precision: 'PRC',
+    potential: 'POT'
+  };
+  const RADAR_MAX = 5;
+
+  /* =========================================================
+     TOOLTIP — REFS DOM
+     ========================================================= */
+  const skillTooltip      = $('#skillTooltip');
+  const tooltipIcon       = $('#tooltipIcon');
+  const tooltipName       = $('#tooltipName');
+  const tooltipType       = $('#tooltipType');
+  const tooltipDesc       = $('#tooltipDesc');
+  const tooltipDamage     = $('#tooltipDamage');
+  const tooltipCd         = $('#tooltipCd');
+
+  /* Refs radar en arena */
+  const radarP1 = document.getElementById('radarP1');
+  const radarP2 = document.getElementById('radarP2');
 
   /* =========================================================
      MÓDULO 2 — INIT

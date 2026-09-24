@@ -3070,5 +3070,487 @@
     .mode-btn { min-width: 0; width: 100%; }
   }
 
+  /* ============================================================
+   RADAR CHART HEXAGONAL (JOJO STATS)
+   ============================================================ */
+.radar-chart {
+  display: grid;
+  place-items: center;
+  width: 100%;
+}
+
+/* --- En tarjetas del roster: compacto --- */
+.radar-chart--card {
+  padding: 6px 0 4px;
+  max-width: 100%;
+}
+
+.radar-chart--card svg {
+  width: 100%;
+  max-width: 158px;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+
+/* --- En la arena de combate: bajo el sprite, con fondo para legibilidad --- */
+.radar-chart--battle {
+  position: absolute;
+  bottom: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 160px;
+  max-width: 52%;
+  opacity: 1;
+  filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.85));
+  pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease, filter 0.3s ease;
+  z-index: 2;
+}
+
+.battle-fighter.is-active .radar-chart--battle {
+  transform: translateX(-50%) scale(1.06);
+  filter: drop-shadow(0 8px 22px rgba(0, 0, 0, 0.9)) drop-shadow(0 0 14px rgba(197, 160, 89, 0.45));
+}
+
+.battle-fighter.is-waiting .radar-chart--battle {
+  opacity: 0.55;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.8));
+}
+
+.battle-fighter.is-defeated .radar-chart--battle {
+  opacity: 0.25;
+  filter: grayscale(0.9) drop-shadow(0 4px 10px rgba(0, 0, 0, 0.7));
+}
+
+/* --- SVG base --- */
+.radar-chart svg {
+  overflow: visible;
+}
+
+/* --- Anillos y ejes --- */
+.radar-grid-ring {
+  fill: none;
+  stroke: rgba(230, 198, 106, 0.22);
+  stroke-width: 1;
+}
+
+.radar-grid-axis {
+  fill: none;
+  stroke: rgba(230, 198, 106, 0.14);
+  stroke-width: 1;
+}
+
+/* --- Círculo de fondo (solo versión batalla) --- */
+.radar-bg {
+  fill: rgba(15, 10, 25, 0.72);
+  stroke: #c5a059;
+  stroke-width: 1.4;
+  filter: drop-shadow(0 0 6px rgba(197, 160, 89, 0.35));
+}
+
+.radar-chart--card .radar-bg {
+  fill: rgba(15, 10, 25, 0.45);
+  stroke: rgba(197, 160, 89, 0.7);
+  stroke-width: 1;
+}
+
+/* --- Polígono de datos --- */
+.radar-polygon {
+  fill: rgba(230, 198, 106, 0.3);
+  stroke: var(--gold-1);
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 6px rgba(230, 198, 106, 0.55));
+  transition: fill 0.25s ease, stroke 0.25s ease;
+}
+
+.battle-fighter.is-active .radar-polygon {
+  fill: rgba(230, 198, 106, 0.48);
+  stroke: var(--gold-0);
+  stroke-width: 2.2;
+  filter: drop-shadow(0 0 12px rgba(230, 198, 106, 0.95));
+}
+
+/* --- Vértices del polígono --- */
+.radar-vertex {
+  fill: var(--gold-0);
+  stroke: #1a1206;
+  stroke-width: 0.6;
+  filter: drop-shadow(0 0 4px rgba(230, 198, 106, 0.95));
+}
+
+/* ============================================================
+   ETIQUETAS DEL RADAR — SIGLA (eje) ARRIBA, RANGO (letra) ABAJO
+   ============================================================ */
+
+/* Sigla del eje (PWR, SPD, RNG, DUR, PRC, POT) */
+/* Contenedor del texto del eje */
+.radar-chart svg text {
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+/* Sigla (PWR, SPD, RNG...) — línea superior, pequeña */
+.radar-axis-label {
+  font-family: 'Cinzel', 'Rajdhani', serif;
+  font-size: 7px;
+  font-weight: 700;
+  fill: #d8cfb6;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.65);
+  stroke-width: 1.6px;
+  stroke-linejoin: round;
+}
+
+.battle-fighter.is-active .radar-axis-label {
+  fill: var(--gold-0);
+}
+
+/* Letra del rango (A/B/C/D/E) — línea inferior, grande y dorada */
+.radar-axis-grade {
+  font-family: 'Cinzel', serif;
+  font-size: 11px;
+  font-weight: 900;
+  fill: #ffd166;
+  letter-spacing: 0;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.8);
+  stroke-width: 2px;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 3px rgba(255, 209, 102, 0.7));
+}
+
+.battle-fighter.is-active .radar-axis-grade {
+  fill: #ffe8a3;
+  filter: drop-shadow(0 0 6px rgba(255, 232, 163, 0.95));
+}
+
+/* En tarjeta, un poco más compacto */
+.radar-chart--card .radar-axis-label { font-size: 6.5px; }
+.radar-chart--card .radar-axis-grade { font-size: 10px; }
+
+/* ============================================================
+   TOOLTIP NARRATIVO DE HABILIDADES
+   ============================================================ */
+.skill-tooltip {
+  position: fixed;
+  z-index: 220;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  padding: 14px 16px 12px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(230, 198, 106, 0.16), transparent 55%),
+    linear-gradient(180deg, rgba(28, 24, 40, 0.98), rgba(19, 16, 28, 0.98));
+  border: 1px solid var(--gold-2);
+  border-radius: var(--radius-md);
+  box-shadow:
+    0 18px 50px rgba(0, 0, 0, 0.85),
+    0 0 30px rgba(230, 198, 106, 0.22),
+    inset 0 0 0 1px rgba(230, 198, 106, 0.08);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(6px) scale(0.97);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  color: var(--ink-0);
+  backdrop-filter: blur(8px);
+}
+
+.skill-tooltip.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+/* Flecha */
+.skill-tooltip__arrow {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: linear-gradient(180deg, rgba(28, 24, 40, 0.98), rgba(19, 16, 28, 0.98));
+  border: 1px solid var(--gold-2);
+  transform: rotate(45deg);
+  z-index: -1;
+}
+
+.skill-tooltip[data-arrow="top"]    .skill-tooltip__arrow { top: -7px;    left: var(--arrow-x, 50%); margin-left: -6px; border-right: 0; border-bottom: 0; }
+.skill-tooltip[data-arrow="bottom"] .skill-tooltip__arrow { bottom: -7px; left: var(--arrow-x, 50%); margin-left: -6px; border-left: 0;  border-top: 0; }
+
+/* Header */
+.skill-tooltip__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(230, 198, 106, 0.22);
+}
+
+.skill-tooltip__icon {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 900;
+  color: #1a1206;
+  background: linear-gradient(180deg, var(--gold-1), var(--gold-2));
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+  flex-shrink: 0;
+}
+
+.skill-tooltip__name {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--gold-0);
+  margin: 0;
+  line-height: 1.15;
+  text-shadow: 0 0 12px rgba(230, 198, 106, 0.4);
+}
+
+/* Tipo de acción */
+.skill-tooltip__type {
+  display: inline-block;
+  padding: 3px 10px;
+  margin-bottom: 8px;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  color: var(--gold-1);
+  background: rgba(230, 198, 106, 0.08);
+}
+
+.skill-tooltip__type[data-kind="damage"]  { color: #ff8a70; background: rgba(200, 68, 58, 0.14); border-color: rgba(255, 138, 112, 0.55); }
+.skill-tooltip__type[data-kind="heal"] { color: #6cd18a; background: rgba(79, 174, 106, 0.14); border-color: rgba(108, 209, 138, 0.55); }
+.skill-tooltip__type[data-kind="shield"]  { color: #9ec7e0; background: rgba(158, 199, 224, 0.12); border-color: rgba(158, 199, 224, 0.55); }
+
+/* Descripción narrativa */
+.skill-tooltip__desc {
+  font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #f0e6d2;
+  margin: 0 0 10px;
+  letter-spacing: 0.01em;
+  max-height: 110px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.skill-tooltip__desc::-webkit-scrollbar { width: 5px; }
+.skill-tooltip__desc::-webkit-scrollbar-thumb {
+  background: var(--gold-3);
+  border-radius: 3px;
+}
+
+.skill-tooltip__desc:empty::before {
+  content: "Sin descripción registrada.";
+  color: var(--ink-3);
+  font-style: italic;
+}
+
+/* Footer */
+.skill-tooltip__footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(230, 198, 106, 0.18);
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.skill-tooltip__damage {
+  color: #ffd166;
+  text-shadow: 0 0 10px rgba(255, 209, 102, 0.45);
+}
+
+.skill-tooltip__cd {
+  color: var(--ink-2);
+}
+
+/* Responsive */
+@media (max-width: 620px) {
+  .skill-tooltip { width: calc(100vw - 24px); }
+  .radar-chart--battle { width: 92px; }
+  .radar-chart--card svg { max-width: 120px; }
+}
+
+/* ============================================================
+   PÍLDORAS DE TIPO DE HABILIDAD
+   ============================================================ */
+   .ability-type-pills {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-top: 4px;
+  }
+  
+  .type-pill {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 10px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    background: rgba(10, 8, 16, 0.55);
+    cursor: pointer;
+    transition: all 0.18s ease;
+    user-select: none;
+  }
+  
+  .type-pill input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+  
+  .type-pill__icon {
+    font-size: 0.95rem;
+    line-height: 1;
+    transition: transform 0.18s ease;
+  }
+  
+  .type-pill__label {
+    font-family: var(--font-display);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-1);
+  }
+  
+  /* Estados base por tipo */
+  .type-pill--damage  { --pill-accent: #e35c4f; }
+  .type-pill--heal    { --pill-accent: #6cd18a; }
+  .type-pill--shield  { --pill-accent: #9ec7e0; }
+  
+  .type-pill:hover {
+    border-color: var(--pill-accent);
+    background: rgba(230, 198, 106, 0.06);
+  }
+  
+  /* Seleccionada */
+  .type-pill:has(input:checked) {
+    border-color: var(--pill-accent);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--pill-accent) 22%, transparent), color-mix(in srgb, var(--pill-accent) 6%, transparent));
+    box-shadow:
+      0 0 14px color-mix(in srgb, var(--pill-accent) 40%, transparent),
+      inset 0 0 0 1px color-mix(in srgb, var(--pill-accent) 50%, transparent);
+  }
+  
+  .type-pill:has(input:checked) .type-pill__label {
+    color: #fff;
+    text-shadow: 0 0 10px color-mix(in srgb, var(--pill-accent) 70%, transparent);
+  }
+  
+  .type-pill:has(input:checked) .type-pill__icon {
+    transform: scale(1.12);
+  }
+  
+  .type-pill:focus-within {
+    outline: 2px solid var(--gold-2);
+    outline-offset: 2px;
+  }
+  
+  /* Fallback para navegadores sin :has() — usa .is-checked desde JS */
+  .type-pill.is-checked {
+    border-color: var(--pill-accent);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--pill-accent) 22%, transparent), color-mix(in srgb, var(--pill-accent) 6%, transparent));
+    box-shadow:
+      0 0 14px color-mix(in srgb, var(--pill-accent) 40%, transparent),
+      inset 0 0 0 1px color-mix(in srgb, var(--pill-accent) 50%, transparent);
+  }
+  
+  .type-pill.is-checked .type-pill__label {
+    color: #fff;
+    text-shadow: 0 0 10px color-mix(in srgb, var(--pill-accent) 70%, transparent);
+  }
+  
+  /* ============================================================
+     FEEDBACK VISUAL DE ACCIONES NO-DAÑO EN ARENA
+     ============================================================ */
+  .battle-fighter.is-healing .battle-fighter__sprite {
+    animation: healGlow 1s ease-out;
+    filter: drop-shadow(0 0 20px rgba(108, 209, 138, 0.95)) drop-shadow(0 18px 30px rgba(0, 0, 0, 0.85));
+  }
+  
+  @keyframes healGlow {
+    0%   { transform: scale(1);    filter: drop-shadow(0 0 0 rgba(108, 209, 138, 0)) drop-shadow(0 18px 30px rgba(0, 0, 0, 0.85)); }
+    40%  { transform: scale(1.06); filter: drop-shadow(0 0 28px rgba(108, 209, 138, 1)) drop-shadow(0 18px 30px rgba(0, 0, 0, 0.85)); }
+    100% { transform: scale(1);    filter: drop-shadow(0 0 0 rgba(108, 209, 138, 0)) drop-shadow(0 18px 30px rgba(0, 0, 0, 0.85)); }
+  }
+  
+  .battle-fighter.is-shielding .battle-fighter__sprite {
+    animation: shieldGlow 1s ease-out;
+  }
+  
+  @keyframes shieldGlow {
+    0%   { filter: drop-shadow(0 0 0 rgba(158, 199, 224, 0)) drop-shadow(0 18px 30px rgba(0, 0, 0, 0.85)); }
+    40%  { filter: drop-shadow(0 0 26px rgba(158, 199, 224, 1)) drop-shadow(0 0 48px rgba(158, 199, 224, 0.6)) drop-shadow(0 18px 30px rgba(0, 0, 0, 0.85)); }
+    100% { filter: drop-shadow(0 0 0 rgba(158, 199, 224, 0)) drop-shadow(0 18px 30px rgba(0, 0, 0, 0.85)); }
+  }
+  
+  /* Indicador persistente de escudo activo */
+  .battle-fighter.has-shield .battle-fighter__sprite-wrap::before {
+    content: "🛡 ESCUDO";
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 3px 10px;
+    font-family: var(--font-display);
+    font-size: 0.62rem;
+    font-weight: 900;
+    letter-spacing: 0.14em;
+    color: #0b1a2c;
+    background: linear-gradient(180deg, #b8dcf5, #7eb8e0);
+    border: 1px solid #ffffff;
+    border-radius: 999px;
+    box-shadow: 0 0 16px rgba(158, 199, 224, 0.85), 0 0 32px rgba(158, 199, 224, 0.45);
+    z-index: 3;
+    animation: shieldPulse 1.6s ease-in-out infinite;
+    pointer-events: none;
+  }
+  
+  @keyframes shieldPulse {
+    0%, 100% { box-shadow: 0 0 16px rgba(158, 199, 224, 0.85), 0 0 32px rgba(158, 199, 224, 0.45); }
+    50%      { box-shadow: 0 0 24px rgba(158, 199, 224, 1), 0 0 48px rgba(158, 199, 224, 0.65); }
+  }
+  
+  /* Entradas de log por tipo */
+  .log-entry--heal {
+    border-left-color: var(--ready-hi);
+    background: rgba(79, 174, 106, 0.12);
+    color: #d6f5df;
+  }
+  
+  .log-entry--shield {
+    border-left-color: var(--accent-cyan);
+    background: rgba(79, 212, 212, 0.12);
+    color: #d6f5f5;
+  }
+  
+  /* Ajuste responsive de las píldoras */
+  @media (max-width: 620px) {
+    .ability-type-pills { grid-template-columns: 1fr; }
+  }
+
   /* ===== UTILIDADES ===== */
   [hidden] { display: none !important; }

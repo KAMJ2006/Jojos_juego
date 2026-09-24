@@ -291,6 +291,7 @@
           <img class="battle-fighter__sprite" id="battleSpriteP1" alt="">
           <div class="battle-fighter__sprite-fallback" id="spriteFallbackP1">🂠</div>
           <div class="impact-flash" id="impactFlashP1"></div>
+          <div class="radar-chart radar-chart--battle" id="radarP1" aria-hidden="true"></div>
         </div>
       </article>
 
@@ -318,6 +319,7 @@
           <img class="battle-fighter__sprite" id="battleSpriteP2" alt="">
           <div class="battle-fighter__sprite-fallback" id="spriteFallbackP2">🂠</div>
           <div class="impact-flash" id="impactFlashP2"></div>
+          <div class="radar-chart radar-chart--battle" id="radarP2" aria-hidden="true"></div>
         </div>
       </article>
     </div>
@@ -426,7 +428,7 @@
 
             <div class="form__row">
               <label class="field">
-                <span class="field__label">Tipo de Afinidad</span>
+                
                 <label class="field">
                     <span class="field__label">Tipo de Afinidad</span>
                     <select id="affinity" name="affinity" required>
@@ -544,6 +546,26 @@
                   <input type="number" class="ability-cooldown" min="0" max="3" step="1" value="1">
                 </label>
               </div>
+
+              <!-- NUEVO: selector de tipo -->
+              <div class="ability-type-pills" role="radiogroup" aria-label="Tipo de habilidad">
+                <label class="type-pill type-pill--damage">
+                  <input type="radio" class="ability-type" name="abilityType0" value="damage" checked>
+                  <span class="type-pill__icon">⚔</span>
+                  <span class="type-pill__label">Ataque</span>
+                </label>
+                <label class="type-pill type-pill--heal">
+                  <input type="radio" class="ability-type" name="abilityType0" value="heal">
+                  <span class="type-pill__icon">✚</span>
+                  <span class="type-pill__label">Soporte</span>
+                </label>
+                <label class="type-pill type-pill--shield">
+                  <input type="radio" class="ability-type" name="abilityType0" value="shield">
+                  <span class="type-pill__icon">🛡</span>
+                  <span class="type-pill__label">Escudo</span>
+                </label>
+              </div>
+
               <label class="field">
                 <span class="field__label">Descripción breve</span>
                 <input type="text" class="ability-desc" maxlength="120" placeholder="Ráfaga de golpes a velocidad luz.">
@@ -555,7 +577,7 @@
               <div class="form__row">
                 <label class="field">
                   <span class="field__label">Nombre</span>
-                  <input type="text" class="ability-name" maxlength="40" placeholder="Ej. Star Finger">
+                  <input type="text" class="ability-name" maxlength="40" placeholder="Ej. Ora Ora Rush">
                 </label>
                 <label class="field field--small">
                   <span class="field__label">Daño Base (15–60)</span>
@@ -566,9 +588,29 @@
                   <input type="number" class="ability-cooldown" min="0" max="3" step="1" value="1">
                 </label>
               </div>
+
+              <!-- Selector de tipo Habilidad II -->
+              <div class="ability-type-pills" role="radiogroup" aria-label="Tipo de habilidad">
+                <label class="type-pill type-pill--damage">
+                  <input type="radio" class="ability-type" name="abilityType1" value="damage" checked>
+                  <span class="type-pill__icon">⚔</span>
+                  <span class="type-pill__label">Ataque</span>
+                </label>
+                <label class="type-pill type-pill--heal">
+                  <input type="radio" class="ability-type" name="abilityType1" value="heal">
+                  <span class="type-pill__icon">✚</span>
+                  <span class="type-pill__label">Soporte</span>
+                </label>
+                <label class="type-pill type-pill--shield">
+                  <input type="radio" class="ability-type" name="abilityType1" value="shield">
+                  <span class="type-pill__icon">🛡</span>
+                  <span class="type-pill__label">Escudo</span>
+                </label>
+              </div>
+
               <label class="field">
                 <span class="field__label">Descripción breve</span>
-                <input type="text" class="ability-desc" maxlength="120" placeholder="Extensión del dedo índice a distancia.">
+                <input type="text" class="ability-desc" maxlength="120" placeholder="Ráfaga de golpes a velocidad luz.">
               </label>
             </div>
 
@@ -577,7 +619,7 @@
               <div class="form__row">
                 <label class="field">
                   <span class="field__label">Nombre</span>
-                  <input type="text" class="ability-name" maxlength="40" placeholder="Ej. Time Stop">
+                  <input type="text" class="ability-name" maxlength="40" placeholder="Ej. Ora Ora Rush">
                 </label>
                 <label class="field field--small">
                   <span class="field__label">Daño Base (15–60)</span>
@@ -588,9 +630,29 @@
                   <input type="number" class="ability-cooldown" min="0" max="3" step="1" value="1">
                 </label>
               </div>
+
+              <!-- Selector de tipo Habilidad III -->
+              <div class="ability-type-pills" role="radiogroup" aria-label="Tipo de habilidad">
+                <label class="type-pill type-pill--damage">
+                  <input type="radio" class="ability-type" name="abilityType2" value="damage" checked>
+                  <span class="type-pill__icon">⚔</span>
+                  <span class="type-pill__label">Ataque</span>
+                </label>
+                <label class="type-pill type-pill--heal">
+                  <input type="radio" class="ability-type" name="abilityType2" value="heal">
+                  <span class="type-pill__icon">✚</span>
+                  <span class="type-pill__label">Soporte</span>
+                </label>
+                <label class="type-pill type-pill--shield">
+                  <input type="radio" class="ability-type" name="abilityType2" value="shield">
+                  <span class="type-pill__icon">🛡</span>
+                  <span class="type-pill__label">Escudo</span>
+                </label>
+              </div>
+
               <label class="field">
                 <span class="field__label">Descripción breve</span>
-                <input type="text" class="ability-desc" maxlength="120" placeholder="Detención del tiempo por unos segundos.">
+                <input type="text" class="ability-desc" maxlength="120" placeholder="Ráfaga de golpes a velocidad luz.">
               </label>
             </div>
           </fieldset>
@@ -803,6 +865,21 @@
       </div>
     </div>
   </div>
+
+    <!-- ===== TOOLTIP NARRATIVO DE HABILIDADES ===== -->
+    <div class="skill-tooltip" id="skillTooltip" role="tooltip" hidden>
+      <div class="skill-tooltip__arrow"></div>
+      <header class="skill-tooltip__header">
+        <span class="skill-tooltip__icon" id="tooltipIcon">Ⅰ</span>
+        <h4 class="skill-tooltip__name" id="tooltipName">—</h4>
+      </header>
+      <div class="skill-tooltip__type" id="tooltipType">—</div>
+      <p class="skill-tooltip__desc" id="tooltipDesc">—</p>
+      <footer class="skill-tooltip__footer">
+        <span class="skill-tooltip__damage" id="tooltipDamage">— daño</span>
+        <span class="skill-tooltip__cd" id="tooltipCd">CD —</span>
+      </footer>
+    </div>
 
   <!-- ===== TOAST / NOTIFICACIONES ===== -->
   <div class="toast-stack" id="toastStack" aria-live="polite"></div>
