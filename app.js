@@ -431,11 +431,13 @@
        DOM REFS
        ========================================================= */
    
-  
+
     const gallery          = $('#gallery');
     const emptyState       = $('#emptyState');
     const participantsEl   = $('#participantsCounter');
-  
+
+    const stageAffinityPenaltyInput = $('#stageAffinityPenaltyInput');
+
     const btnAddNew        = $('#btnAddNew');
     const btnExport        = $('#btnExport');
     const btnImportTrigger = $('#btnImportTrigger');
@@ -479,13 +481,35 @@
       }
     }
   
-    function saveRoster() {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(roster));
-      } catch (err) {
-        console.error('[JoJo Roster] Error al guardar localStorage:', err);
-        toast('No se pudo guardar en localStorage. ¿Cuota excedida?', 'error');
+    function safeSetItem(key, value, label = 'datos') {
+      const payload = typeof value === 'string' ? value : JSON.stringify(value);
+      const SIZE_LIMIT = 4.5 * 1024 * 1024; // 4.5 MB margen sobre el límite ~5MB
+  
+      if (payload.length > SIZE_LIMIT) {
+        toast(`⚠ ${label}: datos demasiado grandes (${(payload.length / 1024 / 1024).toFixed(2)} MB). Reduce imágenes.`, 'error');
+        return false;
       }
+  
+      try {
+        localStorage.setItem(key, payload);
+        return true;
+      } catch (err) {
+        console.error('[JoJo Roster] localStorage error:', err);
+        if (err && (err.name === 'QuotaExceededError' || err.code === 22 || err.code === 1014)) {
+          toast(`⚠ Cuota de almacenamiento excedida al guardar ${label}. Elimina imágenes pesadas o limpiar roster.`, 'error');
+        } else {
+          toast(`No se pudo guardar ${label}.`, 'error');
+        }
+        return false;
+      }
+    }
+  
+    function saveRoster() {
+      return safeSetItem(STORAGE_KEY, roster, 'roster');
+    }
+  
+    function saveStages() {
+      return safeSetItem(STAGES_KEY, stages, 'escenarios');
     }
   
     function loadReadyFlag() {
@@ -692,6 +716,8 @@
   
       // Reasignar valores por defecto de habilidades
       $$('.ability-block').forEach((block) => {
+        const accEl = block.querySelector('.ability-accuracy');
+        if (accEl) accEl.value = 100;
         const dmg = block.querySelector('.ability-damage');
         const cd  = block.querySelector('.ability-cooldown');
         if (dmg) dmg.value = 30;
@@ -747,6 +773,8 @@
         if (cdEl)   cdEl.value   = ab.cooldown ?? 1;
         if (descEl) descEl.value = ab.description || '';
               // Restaurar el tipo de habilidad
+        const accEl = block.querySelector('.ability-accuracy');
+        if (accEl) accEl.value = ab.accuracy ?? 100;
       const blockTypeRadios = block.querySelectorAll('.ability-type');
       const savedType = ab.type || 'damage';
       blockTypeRadios.forEach((r) => {
@@ -768,9 +796,10 @@
         return {
           name: (block.querySelector('.ability-name')?.value || '').trim(),
           damage: clampNumber(block.querySelector('.ability-damage')?.value, 15, 60, 30),
-          cooldown: clampNumber(block.querySelector('.ability-cooldown')?.value, 0, 3, 1),
+          cooldown: clampNumber(block.querySelector('.ability-cooldown')?.value, 0, 5, 1),
+          accuracy: clampNumber(block.querySelector('.ability-accuracy')?.value, 10, 100, 100),
           description: (block.querySelector('.ability-desc')?.value || '').trim(),
-          type: checkedType ? checkedType.value : 'damage' // 'damage' | 'heal' | 'shield'
+          type: checkedType ? checkedType.value : 'damage'
         };
       });
   
@@ -988,16 +1017,17 @@
   
       const abilities = Array.isArray(raw.abilities)
       ? raw.abilities.slice(0, 3).map((ab) => ({
+          accuracy: clampNumber(ab?.accuracy, 10, 100, 100),
           name: String(ab?.name || '').slice(0, 60),
           damage: clampNumber(ab?.damage, 15, 60, 30),
-          cooldown: clampNumber(ab?.cooldown, 0, 3, 1),
+          cooldown: clampNumber(ab?.cooldown, 0, 5, 1),
           description: String(ab?.description || '').slice(0, 200),
           type: ['damage', 'heal', 'shield'].includes(ab?.type) ? ab.type : 'damage'
         }))
       : [];
 
     while (abilities.length < 3) {
-      abilities.push({ name: '', damage: 30, cooldown: 1, description: '', type: 'damage' });
+      abilities.push({ name: '', damage: 30, cooldown: 1, description: '', type: 'damage', accuracy: 100 });
     }
   
       return {
@@ -1257,8 +1287,25 @@
       tooltipType.setAttribute('data-kind', kind);
   
       tooltipDesc.textContent = ability.description || '';
-      tooltipDamage.textContent = `${ability.damage || 0} daño`;
-      tooltipCd.textContent = `CD ${ability.cooldown || 0} turno${(ability.cooldown || 0) === 1 ? '' : 's'}`;
+          // --- Footer contextual por tipo ---
+        if (kind === 'heal') {
+          const healPct = 0.22;
+          const estHeal = Math.round((battle ? (battle[getSideOfActive()]?.maxHp || 100) : 100) * healPct);
+          tooltipDamage.textContent = `+${estHeal} HP · Curación`;
+          tooltipCd.textContent = `CD ${ability.cooldown || 0} turno${(ability.cooldown || 0) === 1 ? '' : 's'}`;
+        } else if (kind === 'shield') {
+          tooltipDamage.textContent = 'Defensa 50%';
+          tooltipCd.textContent = `CD ${ability.cooldown || 0} turno${(ability.cooldown || 0) === 1 ? '' : 's'}`;
+        } else {
+          // damage (default)
+          const acc = clampNumber(ability.accuracy, 10, 100, 100);
+          tooltipDamage.textContent = `${ability.damage || 0} daño`;
+          tooltipCd.textContent = `${acc}% Precisión · CD ${ability.cooldown || 0}`;
+        }
+        function getSideOfActive() {
+          if (!battle) return 'p1';
+          return battle.activeSide;
+        }
   
       // Posicionamiento
       skillTooltip.hidden = false;
@@ -1403,25 +1450,33 @@
       /* =========================================================
      MÓDULO 2 — PERSISTENCIA DE ESCENARIOS
      ========================================================= */
-  function loadStages() {
-    try {
-      const raw = localStorage.getItem(STAGES_KEY);
-      stages = raw ? JSON.parse(raw) : [];
-      if (!Array.isArray(stages)) stages = [];
-    } catch (err) {
-      console.error('[JoJo Roster] Error cargando escenarios:', err);
-      stages = [];
+     function loadStages() {
+      try {
+        const raw = localStorage.getItem(STAGES_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        stages = Array.isArray(parsed)
+          ? parsed.map(normalizeStage).filter(Boolean)
+          : [];
+      } catch (err) {
+        console.error('[JoJo Roster] Error cargando escenarios:', err);
+        stages = [];
+      }
     }
+
+  function normalizeStage(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    return {
+      id: typeof raw.id === 'string' && raw.id ? raw.id : uid(),
+      name: String(raw.name || 'Escenario sin nombre').slice(0, 60),
+      affinity: String(raw.affinity || 'Físico').slice(0, 30),
+      penalizedAffinity: raw.penalizedAffinity ? String(raw.penalizedAffinity).slice(0, 30) : '',
+      image: typeof raw.image === 'string' ? raw.image : null,
+      imageMime: typeof raw.imageMime === 'string' ? raw.imageMime : null,
+      createdAt: Number(raw.createdAt) || Date.now(),
+      updatedAt: Number(raw.updatedAt) || null
+    };
   }
 
-  function saveStages() {
-    try {
-      localStorage.setItem(STAGES_KEY, JSON.stringify(stages));
-    } catch (err) {
-      console.error(err);
-      toast('No se pudieron guardar los escenarios.', 'error');
-    }
-  }
 
   /* =========================================================
      MÓDULO 2 — RENDER DE ESCENARIOS
@@ -1455,17 +1510,30 @@
       ? `<img class="stage-card__img" src="${escapeHtml(stage.image)}" alt="${escapeHtml(stage.name)}">`
       : `<div class="stage-card__img stage-card__img--empty">🏙</div>`;
 
+    const favoredChip = stage.affinity
+      ? `<span class="stage-card__mod stage-card__mod--favored" title="Afinidad favorecida +15%">+15% ${escapeHtml(stage.affinity)}</span>`
+      : '';
+    const penalizedChip = stage.penalizedAffinity
+      ? `<span class="stage-card__mod stage-card__mod--penalized" title="Afinidad perjudicada −15%">−15% ${escapeHtml(stage.penalizedAffinity)}</span>`
+      : '';
+
     card.innerHTML = `
       ${imgMarkup}
       <div class="stage-card__body">
         <h4 class="stage-card__name" title="${escapeHtml(stage.name)}">${escapeHtml(stage.name)}</h4>
-        <span class="stage-card__mod">${escapeHtml(stage.affinity)}</span>
+        <div class="stage-card__mods">
+          ${favoredChip}
+          ${penalizedChip}
+        </div>
         <div class="stage-card__actions">
-          <button type="button" class="btn btn--danger" data-action="delete">✕ Eliminar</button>
+          <button type="button" class="btn btn--ghost" data-action="edit">✎ Editar</button>
+          <button type="button" class="btn btn--danger" data-action="delete">✕</button>
         </div>
       </div>
     `;
 
+    card.querySelector('[data-action="edit"]')
+      .addEventListener('click', () => openStageModal(stage.id));
     card.querySelector('[data-action="delete"]')
       .addEventListener('click', () => deleteStage(stage.id));
 
@@ -1482,17 +1550,40 @@
     toast(`Escenario "${stage.name}" eliminado.`, 'info');
   }
 
+
   /* =========================================================
      MÓDULO 2 — MODAL DE ESCENARIO
      ========================================================= */
-     function openStageModal() {
-        resetStageForm();
-        populateStageAffinitySelect(); // ← pobla base + personalizadas
+     function openStageModal(editId = null) {
+      resetStageForm();
+      populateStageAffinitySelect();
+      populateStagePenaltySelect();
+  
+      if (editId) {
+        const stage = stages.find((s) => s.id === editId);
+        if (stage) {
+          stageModalTitle.textContent = `Editar Escenario — ${stage.name}`;
+          stageNameInput.value = stage.name || '';
+          stageAffinityInput.value = stage.affinity || '';
+          if (stageAffinityPenaltyInput) {
+            stageAffinityPenaltyInput.value = stage.penalizedAffinity || '';
+          }
+          // Precargar imagen existente
+          pendingStageImageBase64 = stage.image || null;
+          pendingStageImageMime = stage.imageMime || null;
+          updateStagePreview();
+          // Guardar id en el hidden
+          const editInput = document.getElementById('stageEditId');
+          if (editInput) editInput.value = editId;
+        }
+      } else {
         stageModalTitle.textContent = 'Nuevo Escenario';
-        stageModalBackdrop.hidden = false;
-        document.body.style.overflow = 'hidden';
-        setTimeout(() => stageNameInput.focus(), 60);
       }
+  
+      stageModalBackdrop.hidden = false;
+      document.body.style.overflow = 'hidden';
+      setTimeout(() => stageNameInput.focus(), 60);
+    }
 
   function closeStageModal() {
     stageModalBackdrop.hidden = true;
@@ -1504,7 +1595,24 @@
     stageForm.reset();
     pendingStageImageBase64 = null;
     pendingStageImageMime = null;
+    const editInput = document.getElementById('stageEditId');
+    if (editInput) editInput.value = '';
     updateStagePreview();
+  }
+
+  function populateStagePenaltySelect(selectedValue = null) {
+    if (!stageAffinityPenaltyInput) return;
+    const all = getAllAffinities();
+    stageAffinityPenaltyInput.innerHTML = '<option value="">— Ninguna —</option>';
+    for (const aff of all) {
+      const opt = document.createElement('option');
+      opt.value = aff;
+      opt.textContent = aff;
+      stageAffinityPenaltyInput.appendChild(opt);
+    }
+    if (selectedValue && all.includes(selectedValue)) {
+      stageAffinityPenaltyInput.value = selectedValue;
+    }
   }
 
   function updateStagePreview() {
@@ -1522,15 +1630,39 @@
   function collectStageForm() {
     return {
       name: stageNameInput.value.trim(),
-      affinity: stageAffinityInput.value
+      affinity: stageAffinityInput.value,
+      penalizedAffinity: stageAffinityPenaltyInput ? (stageAffinityPenaltyInput.value || '') : ''
     };
   }
 
   function upsertStage(data) {
+    const editInput = document.getElementById('stageEditId');
+    const editId = editInput && editInput.value ? editInput.value : null;
+
+    if (editId) {
+      const idx = stages.findIndex((s) => s.id === editId);
+      if (idx >= 0) {
+        stages[idx] = {
+          ...stages[idx],
+          name: data.name,
+          affinity: data.affinity,
+          penalizedAffinity: data.penalizedAffinity,
+          image: pendingStageImageBase64 || stages[idx].image || null,
+          imageMime: pendingStageImageMime || stages[idx].imageMime || null,
+          updatedAt: Date.now()
+        };
+        saveStages();
+        renderStages();
+        toast(`Escenario "${data.name}" actualizado.`, 'success');
+        return;
+      }
+    }
+
     const payload = {
       id: uid(),
       name: data.name,
       affinity: data.affinity,
+      penalizedAffinity: data.penalizedAffinity,
       image: pendingStageImageBase64 || null,
       imageMime: pendingStageImageMime || null,
       createdAt: Date.now()
@@ -1820,7 +1952,8 @@
       stats: { ...stand.stats },
       abilities: (stand.abilities || []).map((a) => ({
         ...a,
-        type: ['damage', 'heal', 'shield'].includes(a.type) ? a.type : 'damage'
+        type: ['damage', 'heal', 'shield'].includes(a.type) ? a.type : 'damage',
+        accuracy: clampNumber(a.accuracy, 10, 100, 100)
       })),
       image: stand.image || null,
       level: stand.level || DEFAULT_LEVEL,
@@ -1939,7 +2072,7 @@
     btnBackToRoster.addEventListener('click', showRosterView);
 
     // Abrir modal escenario
-    btnAddStage.addEventListener('click', openStageModal);
+    btnAddStage.addEventListener('click',()=> openStageModal(null));
 
     // Cerrar modal escenario
     btnCloseStageModal.addEventListener('click', closeStageModal);
@@ -2134,6 +2267,33 @@
                 if (p1.hp > 0) fighterP1.classList.add('is-waiting');
               }
             }
+
+                // --- Terrain tags (bonus/penalización) ---
+    const updateTerrainTag = (fighterEl, fighter) => {
+      // Limpiar tag previo
+      const prev = fighterEl.querySelector('.battle-fighter__terrain-tag');
+      if (prev) prev.remove();
+
+      if (!battle.stage) return;
+
+      const favored = (fighter.terrainBoost > 0) || (battle.stage.affinity === fighter.data.affinity);
+      const penalized = battle.stage.penalizedAffinity && battle.stage.penalizedAffinity === fighter.data.affinity;
+
+      if (favored) {
+        const tag = document.createElement('span');
+        tag.className = 'battle-fighter__terrain-tag battle-fighter__terrain-tag--bonus';
+        tag.textContent = `▲ +${fighter.terrainBoost > 0 ? 30 : 15}% Terreno`;
+        fighterEl.appendChild(tag);
+      } else if (penalized) {
+        const tag = document.createElement('span');
+        tag.className = 'battle-fighter__terrain-tag battle-fighter__terrain-tag--penalty';
+        tag.textContent = '▼ −15% Terreno';
+        fighterEl.appendChild(tag);
+      }
+    };
+
+    updateTerrainTag(fighterP1, battle.p1);
+    updateTerrainTag(fighterP2, battle.p2);
         
             // Indicador de turno
             battleTurnIndicator.textContent = finished
@@ -2162,19 +2322,23 @@
         if (!battle) return;
         const { p1, p2, stage } = battle;
     
-        const p1Bonus = (p1.terrainBoost > 0) || (stage && stage.affinity === p1.data.affinity);
-        const p2Bonus = (p2.terrainBoost > 0) || (stage && stage.affinity === p2.data.affinity);
+        const buildChips = (fighter, side) => {
+          const chips = [];
+          const favored = (fighter.terrainBoost > 0) || (stage && stage.affinity === fighter.data.affinity);
+          const penalized = stage && stage.penalizedAffinity && stage.penalizedAffinity === fighter.data.affinity;
+          const pct = fighter.terrainBoost > 0 ? 30 : 15;
     
-        // El chip debe indicar la intensidad correcta
-        const p1Pct = p1.terrainBoost > 0 ? 30 : 15;
-        const p2Pct = p2.terrainBoost > 0 ? 30 : 15;
+          if (favored) {
+            chips.push(`<span class="status-chip status-chip--bonus">Bonus +${pct}%</span>`);
+          }
+          if (penalized) {
+            chips.push(`<span class="status-chip status-chip--penalty">Penalización −15%</span>`);
+          }
+          return chips.join('');
+        };
     
-        statusP1.innerHTML = p1Bonus
-        ? `<span class="status-chip">Bonus +${p1Pct}%</span>`
-        : '';
-      statusP2.innerHTML = p2Bonus
-        ? `<span class="status-chip">Bonus +${p2Pct}%</span>`
-        : '';
+        statusP1.innerHTML = buildChips(p1, 'p1');
+        statusP2.innerHTML = buildChips(p2, 'p2');
       }
     
       function updateHpBar(side) {
@@ -2223,23 +2387,42 @@
      - Bonus de evento (Terreno Reclamado): sobrescribe a +30% vía
        fighter.terrainBoost (0.30) mientras el combate siga activo.
      ========================================================= */
-  function getTerrainMultiplier(stand, fighter) {
-    const affinityMatches = battle && battle.stage && battle.stage.affinity === stand.affinity;
-
-    // Si el evento reclamó el terreno, respeta su boost aunque la afinidad
-    // fuera intercambiada dinámicamente por otro evento
-    if (fighter && typeof fighter.terrainBoost === 'number' && fighter.terrainBoost > 0) {
-      return 1 + fighter.terrainBoost;
+     function getTerrainMultiplier(stand, fighter) {
+      if (!battle || !battle.stage) {
+        // Si no hay stage, solo aplica el boost de evento si existe
+        if (fighter && typeof fighter.terrainBoost === 'number' && fighter.terrainBoost > 0) {
+          return 1 + fighter.terrainBoost;
+        }
+        return 1;
+      }
+  
+      const favored = battle.stage.affinity === stand.affinity;
+      const penalized = battle.stage.penalizedAffinity && battle.stage.penalizedAffinity === stand.affinity;
+  
+      // El boost de evento (Terreno Reclamado) sobrescribe el +15% base
+      if (fighter && typeof fighter.terrainBoost === 'number' && fighter.terrainBoost > 0) {
+        return 1 + fighter.terrainBoost;
+      }
+  
+      if (favored) return 1.15;
+      if (penalized) return 0.85;
+      return 1;
     }
 
-    return affinityMatches ? 1.15 : 1;
-  }
-
-  function hasStageBonus(stand, fighter) {
-    if (!battle || !battle.stage) return false;
-    if (fighter && typeof fighter.terrainBoost === 'number' && fighter.terrainBoost > 0) return true;
-    return battle.stage.affinity === stand.affinity;
-  }
+    function hasStageBonus(stand, fighter) {
+      if (!battle || !battle.stage) {
+        if (fighter && typeof fighter.terrainBoost === 'number' && fighter.terrainBoost > 0) return true;
+        return false;
+      }
+      if (fighter && typeof fighter.terrainBoost === 'number' && fighter.terrainBoost > 0) return true;
+      return battle.stage.affinity === stand.affinity;
+    }
+  
+    function hasStagePenalty(stand) {
+      if (!battle || !battle.stage) return false;
+      if (!battle.stage.penalizedAffinity) return false;
+      return battle.stage.penalizedAffinity === stand.affinity;
+    }
     
   function computeBasicAttackDamage(attacker, defender, attackerFighter) {
     const pwrBonus = PWR_BASIC_BONUS[attacker.stats.power] || 0;
@@ -2354,31 +2537,47 @@
             return;
           }
           actionName = ability.name || `Habilidad ${skillIndex + 1}`;
-    
           const kind = ability.type || 'damage';
+    
+          // ---------- SEGUROS ANTI-CHISPAS (bloqueo sin gasto de turno) ----------
+          if (kind === 'heal' && attacker.hp >= attacker.maxHp) {
+            pushLog({
+              side: attackerSide,
+              type: '',
+              html: `<span style="color:var(--ink-2);">⚠ <strong>${escapeHtml(attacker.data.standName)}</strong> intenta usar <em>${escapeHtml(actionName)}</em> pero su HP ya está al máximo. <strong>Acción cancelada.</strong></span>`
+            });
+            battle.busy = false;
+            return; // ← NO consume turno, NO aplica cooldown
+          }
+    
+          if (kind === 'shield' && attacker.shield) {
+            pushLog({
+              side: attackerSide,
+              type: '',
+              html: `<span style="color:var(--ink-2);">⚠ <strong>${escapeHtml(attacker.data.standName)}</strong> ya tiene un escudo activo. <strong>Acción cancelada.</strong></span>`
+            });
+            battle.busy = false;
+            return; // ← NO consume turno, NO aplica cooldown
+          }
     
           // ---------- HEAL ----------
           if (kind === 'heal') {
-            const healPct = 0.22; // 22% del maxHp
+            const healPct = 0.22;
             const rawHeal = Math.round(attacker.maxHp * healPct);
             const before = attacker.hp;
             attacker.hp = Math.min(attacker.maxHp, attacker.hp + rawHeal);
             const healed = attacker.hp - before;
     
-            // Cooldown
             attacker.cooldowns[skillIndex] = (Number(ability.cooldown) || 0) + 1;
     
-            // Animación de curación sobre el PROPIO atacante
             const selfEl = attackerSide === 'p1' ? fighterP1 : fighterP2;
-            const selfWrap = selfEl;
             selfEl.classList.add('is-healing');
             setTimeout(() => selfEl.classList.remove('is-healing'), 1000);
     
-            // Número flotante de cura
             const healFloat = document.createElement('div');
             healFloat.className = 'damage-float damage-float--heal';
             healFloat.textContent = `+${healed}`;
-            selfWrap.appendChild(healFloat);
+            selfEl.appendChild(healFloat);
             setTimeout(() => healFloat.remove(), 1200);
     
             updateHpBar(attackerSide);
@@ -2394,7 +2593,6 @@
                     cryText
             });
     
-            // No hay daño ni verificación de K.O. por parte del atacante
             battle.busy = false;
             passTurn();
             return;
@@ -2403,11 +2601,8 @@
           // ---------- SHIELD ----------
           if (kind === 'shield') {
             attacker.shield = true;
-    
-            // Cooldown
             attacker.cooldowns[skillIndex] = (Number(ability.cooldown) || 0) + 1;
     
-            // Animación de escudo sobre el PROPIO atacante
             const selfEl = attackerSide === 'p1' ? fighterP1 : fighterP2;
             selfEl.classList.add('is-shielding', 'has-shield');
             setTimeout(() => selfEl.classList.remove('is-shielding'), 1000);
@@ -2430,8 +2625,36 @@
           }
     
           // ---------- DAMAGE (default) ----------
+          // Chequeo de Precisión
+          const acc = clampNumber(ability.accuracy, 10, 100, 100);
+          const roll = Math.random() * 100;
+    
+          if (roll > acc) {
+            // FALLO POR PRECISIÓN: consume turno, aplica cooldown, no aplica daño ni animación de impacto
+            attacker.cooldowns[skillIndex] = (Number(ability.cooldown) || 0) + 1;
+    
+            const attackerEl = attackerSide === 'p1' ? fighterP1 : fighterP2;
+            attackerEl.classList.add('is-attacking');
+            setTimeout(() => attackerEl.classList.remove('is-attacking'), 500);
+    
+            const cryText = attacker.data.battleCry
+              ? `<span class="log-entry__cry">“${escapeHtml(attacker.data.battleCry)}”</span>`
+              : '';
+            pushLog({
+              side: attackerSide,
+              type: 'miss',
+              html: `<strong>${escapeHtml(attacker.data.standName)}</strong> intenta <em>${escapeHtml(actionName)}</em> ` +
+                    `pero <span style="color:#b8b8b8;font-weight:700;">falla por precisión (${Math.round(acc)}% requerido).</span>` +
+                    cryText
+            });
+    
+            battle.busy = false;
+            passTurn();
+            return;
+          }
+    
+          // Ataque exitoso
           result = computeSkillDamage(attacker.data, defender.data, ability, attacker);
-          // Aplicar cooldown
           attacker.cooldowns[skillIndex] = (Number(ability.cooldown) || 0) + 1;
         }
     
@@ -2487,12 +2710,15 @@
           const cryText = attacker.data.battleCry
             ? `<span class="log-entry__cry">“${escapeHtml(attacker.data.battleCry)}”</span>`
             : '';
-            const bonusPct = result.terrainMult
+          const bonusPct = result.terrainMult
             ? Math.round((result.terrainMult - 1) * 100)
             : 0;
-          const bonusTag = result.bonusApplied
-            ? ` <span style="color:var(--ready-hi);font-weight:700;">[+${bonusPct}% Terreno]</span>`
-            : '';
+          let bonusTag = '';
+          if (bonusPct > 0) {
+            bonusTag = ` <span style="color:var(--ready-hi);font-weight:700;">[+${bonusPct}% Terreno]</span>`;
+          } else if (bonusPct < 0) {
+            bonusTag = ` <span style="color:#ff8a70;font-weight:700;">[${bonusPct}% Terreno]</span>`;
+          }
           const critTag = result.crit
             ? ' <span style="color:var(--danger-hi);font-weight:700;">¡CRÍTICO!</span>'
             : '';
@@ -2550,34 +2776,51 @@
         battle.turn += 1;
         if (battle.turn % 2 === 1) battle.round += 1;
     
-        // Decrementar cooldowns del JUGADOR QUE VA A ACTUAR AHORA
-        // (así el CD se cuenta en "sus propios turnos", no en los del rival)
+        // =========================================================
+         // DECREMENTO DE COOLDOWNS
+         // Se aplica al jugador QUE VA A ACTUAR AHORA (no al que acaba de jugar).
+         //
+         // Semántica por valor de `cdCurrent` (ya guardado como CD+1 al usar):
+         //   cdCurrent = 0 → disponible
+         //   cdCurrent = 1 → bloqueada (este turno propio la consume)
+         //   cdCurrent = N → bloqueada durante N turnos propios
+         //
+         // Ejemplo CD 5:
+         //   T1 uso → cdCurrent = 6
+         //   T2 inicio → 5 (bloq.) · T3 inicio → 4 · T4 inicio → 3
+         //   T5 inicio → 2 · T6 inicio → 1 · T7 inicio → 0 (disponible)
+         //   → Esperó exactamente 5 turnos propios. ✓
+         // =========================================================
         const incoming = battle[next];
-        incoming.cooldowns = incoming.cooldowns.map((cd) => Math.max(0, cd - 1));
-
-        // ← NUEVO: consumir bloqueo de Ataque Básico
-    if ((battle.basicAttackLocked || 0) > 0) {
-      battle.basicAttackLocked = Math.max(0, battle.basicAttackLocked - 1);
-      if (battle.basicAttackLocked === 0) {
-        battle.basicAttackLockedBy = null;
-        pushLog({
-          side: null,
-          type: 'bonus',
-          html: `<span style="color:var(--ready-hi);font-weight:700;">✓ Silencio de Hierro disipado.</span> Ataque Básico disponible de nuevo.`
+        incoming.cooldowns = incoming.cooldowns.map((cd) => {
+          const n = Number(cd) || 0;
+          return n > 0 ? n - 1 : 0;
         });
-      }
-    }
+    
+        // Consumir bloqueo de Ataque Básico (Silencio de Hierro)
+        if ((battle.basicAttackLocked || 0) > 0) {
+          battle.basicAttackLocked = Math.max(0, battle.basicAttackLocked - 1);
+          if (battle.basicAttackLocked === 0) {
+            battle.basicAttackLockedBy = null;
+            pushLog({
+              side: null,
+              type: 'bonus',
+              html: `<span style="color:var(--ready-hi);font-weight:700;">✓ Silencio de Hierro disipado.</span> Ataque Básico disponible de nuevo.`
+            });
+          }
+        }
     
         // Refrescar
         renderBattleUI();
         updateActionPanel();
         announceTurn();
-          // Evaluar si corresponde disparar un evento
+    
+        // Evaluar evento tras el cambio de turno
         if (window.JJA_EventsRoulette && battle) {
           window.JJA_EventsRoulette.maybeTriggerEvent(battle);
         }
       }
-    
+      
       function announceTurn() {
         if (!battle || battle.finished) return;
         const active = battle.activeSide === 'p1' ? battle.p1 : battle.p2;
@@ -2660,7 +2903,19 @@
             badge.textContent = cd;
           } else {
             btn.disabled = false;
-            metaEl.innerHTML = `${ability.damage} daño · CD ${ability.cooldown}`;
+            const kind = ability.type || 'damage';
+            const acc = clampNumber(ability.accuracy, 10, 100, 100);
+    
+            if (kind === 'heal') {
+              const healPct = 0.22;
+              const estHeal = Math.round(active.maxHp * healPct);
+              metaEl.innerHTML = `<span style="color:var(--ready-hi);font-weight:700;">+${estHeal} HP · Curación</span>`;
+            } else if (kind === 'shield') {
+              metaEl.innerHTML = `<span style="color:var(--accent-cyan);font-weight:700;">Defensa 50%</span>`;
+            } else {
+              metaEl.innerHTML = `${ability.damage} daño · ${acc}% Precisión`;
+            }
+    
             metaEl.classList.remove('action-btn__meta--cd');
             metaEl.classList.add('action-btn__meta--ready');
             const badge = btn.querySelector('.action-btn__cd-badge');

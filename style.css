@@ -3552,5 +3552,126 @@
     .ability-type-pills { grid-template-columns: 1fr; }
   }
 
+  /* ============================================================
+   FIXTURE: FILA DE HABILIDAD CON 4 CAMPOS (Nombre / Daño / CD / Prec.)
+   ============================================================ */
+.form__row--ability {
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+}
+
+@media (max-width: 780px) {
+  .form__row--ability {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* ============================================================
+   ESCENARIOS: BOTÓN EDITAR Y ETIQUETAS DE AFINIDAD
+   ============================================================ */
+.stage-card__actions {
+  display: flex;
+  gap: 6px;
+}
+
+.stage-card__actions .btn {
+  flex: 1;
+  justify-content: center;
+  padding: 6px 8px;
+  font-size: 0.6rem;
+}
+
+.stage-card__mods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.stage-card__mod {
+  padding: 2px 8px;
+  font-size: 0.6rem;
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-radius: 999px;
+}
+
+.stage-card__mod--favored {
+  color: #0b1a10;
+  background: linear-gradient(180deg, #6cd18a, #3a8a50);
+  border: 1px solid #a3e8b8;
+}
+
+.stage-card__mod--penalized {
+  color: #fff;
+  background: linear-gradient(180deg, #c8443a, #7a1e16);
+  border: 1px solid #ffb3a1;
+}
+
+/* Etiqueta en arena cuando un Stand recibe bonus o penalización */
+.battle-fighter__terrain-tag {
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 3px 12px;
+  font-family: var(--font-display);
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  z-index: 4;
+  pointer-events: none;
+  white-space: nowrap;
+  animation: terrainTagPulse 1.6s ease-in-out infinite;
+}
+
+.battle-fighter__terrain-tag--bonus {
+  color: #0b1a10;
+  background: linear-gradient(180deg, #a3e8b8, #4fae6a);
+  border: 1px solid #e6ffe9;
+  box-shadow: 0 0 14px rgba(79, 174, 106, 0.85), 0 0 28px rgba(79, 174, 106, 0.4);
+}
+
+.battle-fighter__terrain-tag--penalty {
+  color: #fff;
+  background: linear-gradient(180deg, #e35c4f, #8c2418);
+  border: 1px solid #ffd9d3;
+  box-shadow: 0 0 14px rgba(200, 68, 58, 0.85), 0 0 28px rgba(200, 68, 58, 0.4);
+}
+
+@keyframes terrainTagPulse {
+  0%, 100% { transform: translateX(-50%) scale(1); }
+  50%      { transform: translateX(-50%) scale(1.05); }
+}
+
+/* ============================================================
+   LOG: fallo por precisión
+   ============================================================ */
+.log-entry--miss {
+  border-left-color: #b8b8b8;
+  background: rgba(180, 180, 180, 0.08);
+  color: #d8d8d8;
+  font-style: italic;
+}
+
+.log-entry--miss .log-entry__dmg {
+  color: #b8b8b8;
+}
+
+.status-chip--bonus {
+  color: #0b1a10;
+  background: linear-gradient(180deg, var(--ready-hi), var(--ready));
+}
+
+.status-chip--penalty {
+  color: #fff;
+  background: linear-gradient(180deg, #e35c4f, #8c2418);
+  border: 1px solid #ffd9d3;
+  animation: bonusPulse 1.6s ease-in-out infinite;
+}
+
   /* ===== UTILIDADES ===== */
   [hidden] { display: none !important; }

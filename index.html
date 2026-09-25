@@ -532,18 +532,22 @@
 
             <div class="ability-block" data-ability-index="0">
               <div class="ability-block__header">Habilidad I</div>
-              <div class="form__row">
+              <div class="form__row form__row--ability">
                 <label class="field">
                   <span class="field__label">Nombre</span>
                   <input type="text" class="ability-name" maxlength="40" placeholder="Ej. Ora Ora Rush">
                 </label>
                 <label class="field field--small">
-                  <span class="field__label">Daño Base (15–60)</span>
+                  <span class="field__label">Daño (15–60)</span>
                   <input type="number" class="ability-damage" min="15" max="60" step="1" value="30">
                 </label>
                 <label class="field field--small">
-                  <span class="field__label">Cooldown (0–3)</span>
+                  <span class="field__label">Cooldown (0–5)</span>
                   <input type="number" class="ability-cooldown" min="0" max="5" step="1" value="1">
+                </label>
+                <label class="field field--small">
+                  <span class="field__label">Precisión %</span>
+                  <input type="number" class="ability-accuracy" min="10" max="100" step="5" value="100">
                 </label>
               </div>
 
@@ -584,8 +588,12 @@
                   <input type="number" class="ability-damage" min="15" max="60" step="1" value="30">
                 </label>
                 <label class="field field--small">
-                  <span class="field__label">Cooldown (0–3)</span>
+                  <span class="field__label">Cooldown (0–5)</span>
                   <input type="number" class="ability-cooldown" min="0" max="5" step="1" value="1">
+                </label>
+                <label class="field field--small">
+                  <span class="field__label">Precisión %</span>
+                  <input type="number" class="ability-accuracy" min="10" max="100" step="5" value="100">
                 </label>
               </div>
 
@@ -626,8 +634,12 @@
                   <input type="number" class="ability-damage" min="15" max="60" step="1" value="30">
                 </label>
                 <label class="field field--small">
-                  <span class="field__label">Cooldown (0–3)</span>
+                  <span class="field__label">Cooldown (0–5)</span>
                   <input type="number" class="ability-cooldown" min="0" max="5" step="1" value="1">
+                </label>
+                <label class="field field--small">
+                  <span class="field__label">Precisión %</span>
+                  <input type="number" class="ability-accuracy" min="10" max="100" step="5" value="100">
                 </label>
               </div>
 
@@ -708,8 +720,14 @@
                            base + afinidades personalizadas del usuario -->
                     </select>
                   </label>
+                  <label class="field">
+                    <span class="field__label">Afinidad Perjudicada <em>(−15% efectividad)</em></span>
+                    <select id="stageAffinityPenaltyInput"></select>
+                  </label>
               </fieldset>
-    
+
+              <input type="hidden" id="stageEditId" value="">
+              
               <div class="form__actions">
                 <button type="button" class="btn btn--ghost" id="btnCancelStage">Cancelar</button>
                 <button type="submit" class="btn btn--gold">Guardar Escenario</button>
