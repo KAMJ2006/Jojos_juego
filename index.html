@@ -29,6 +29,7 @@
 
     <nav class="topbar__actions">
       <button type="button" class="btn btn--gold" id="btnAddNew">＋ Añadir Nuevo Stand</button>
+      <button type="button" class="btn btn--dual" id="btnAddDual">⚡ Creación Rápida (Dual)</button>
       <button type="button" class="btn btn--ghost" id="btnExport">⇩ Descargar Roster (JSON)</button>
       <button type="button" class="btn btn--ghost" id="btnImportTrigger">⇧ Cargar Roster (JSON)</button>
       <button type="button" class="btn btn--danger" id="btnClearAll">✕ Limpiar Todo</button>
@@ -898,6 +899,243 @@
         <span class="skill-tooltip__cd" id="tooltipCd">CD —</span>
       </footer>
     </div>
+
+      <!-- ===== MODAL: CREACIÓN DUAL (2 STANDS A LA VEZ) ===== -->
+  <div class="modal-backdrop" id="dualModalBackdrop" hidden>
+    <div class="modal modal--dual" role="dialog" aria-modal="true" aria-labelledby="dualModalTitle">
+      <header class="modal__header">
+        <h2 class="modal__title" id="dualModalTitle">⚡ Creación Dual — 2 Stands a la vez</h2>
+        <button type="button" class="modal__close" id="btnCloseDualModal" aria-label="Cerrar">✕</button>
+      </header>
+
+      <div class="dual-grid">
+
+        <!-- ===== COLUMNA A ===== -->
+        <section class="dual-col" data-dual="A">
+          <header class="dual-col__header">
+            <span class="dual-col__badge">STAND A</span>
+            <button type="button" class="btn btn--archetype" data-archetype="A">⚡ Arquetipo Rápido</button>
+          </header>
+
+          <div class="dual-col__preview">
+            <div class="tarot-preview tarot-preview--dual">
+              <div class="tarot-preview__inner">
+                <img class="dual-preview-img" id="dualImgA" alt="" hidden>
+                <div class="tarot-preview__placeholder" id="dualPlaceholderA">
+                  <span class="tarot-preview__icon">🂠</span>
+                  <span class="tarot-preview__hint">PNG transparente</span>
+                </div>
+              </div>
+              <div class="tarot-preview__frame"></div>
+            </div>
+            <label class="file-drop file-drop--compact" for="dualImageA">
+              <input type="file" id="dualImageA" accept="image/png,image/webp,image/jpeg" hidden>
+              <span class="file-drop__icon">⇪</span>
+              <span class="file-drop__label">Subir PNG</span>
+            </label>
+          </div>
+
+          <div class="dual-col__fields">
+            <label class="field">
+              <span class="field__label">Artista / Dueño</span>
+              <input type="text" class="dual-artist" maxlength="60" placeholder="Ej. Jotaro Kujo">
+            </label>
+            <label class="field">
+              <span class="field__label">Nombre del Stand</span>
+              <input type="text" class="dual-name" maxlength="60" placeholder="Ej. Star Platinum">
+            </label>
+            <label class="field">
+              <span class="field__label">Afinidad</span>
+              <select class="dual-affinity">
+                <option value="Físico">Físico</option>
+                <option value="Fuego">Fuego</option>
+                <option value="Agua">Agua</option>
+                <option value="Hielo">Hielo</option>
+                <option value="Electricidad">Electricidad</option>
+                <option value="Magnetismo">Magnetismo</option>
+                <option value="Tiempo">Tiempo</option>
+                <option value="Gravedad">Gravedad</option>
+                <option value="Veneno">Veneno</option>
+              </select>
+            </label>
+
+            <div class="dual-stats">
+              <label class="field field--stat"><span class="field__label">PWR</span>
+                <select class="dual-stat" data-stat="power"><option>A</option><option selected>B</option><option>C</option><option>D</option><option>E</option></select>
+              </label>
+              <label class="field field--stat"><span class="field__label">SPD</span>
+                <select class="dual-stat" data-stat="speed"><option>A</option><option selected>B</option><option>C</option><option>D</option><option>E</option></select>
+              </label>
+              <label class="field field--stat"><span class="field__label">RNG</span>
+                <select class="dual-stat" data-stat="range"><option>A</option><option selected>B</option><option>C</option><option>D</option><option>E</option></select>
+              </label>
+              <label class="field field--stat"><span class="field__label">DUR</span>
+                <select class="dual-stat" data-stat="durability"><option>A</option><option selected>B</option><option>C</option><option>D</option><option>E</option></select>
+              </label>
+              <label class="field field--stat"><span class="field__label">PRC</span>
+                <select class="dual-stat" data-stat="precision"><option>A</option><option selected>B</option><option>C</option><option>D</option><option>E</option></select>
+              </label>
+              <label class="field field--stat"><span class="field__label">POT</span>
+                <select class="dual-stat" data-stat="potential"><option>A</option><option selected>B</option><option>C</option><option>D</option><option>E</option></select>
+              </label>
+            </div>
+
+            <details class="dual-abilities">
+              <summary>Habilidades (3)</summary>
+              <div class="dual-ability" data-idx="0">
+                <input type="text" class="dual-ab-name" maxlength="40" placeholder="Nombre Habilidad I">
+                <select class="dual-ab-type">
+                  <option value="damage" selected>Ataque</option>
+                  <option value="heal">Soporte</option>
+                  <option value="shield">Escudo</option>
+                </select>
+                <input type="number" class="dual-ab-damage" min="15" max="60" value="30" title="Daño">
+                <input type="number" class="dual-ab-cd" min="0" max="5" value="1" title="CD">
+                <input type="number" class="dual-ab-acc" min="10" max="100" step="5" value="100" title="Precisión %">
+              </div>
+              <div class="dual-ability" data-idx="1">
+                <input type="text" class="dual-ab-name" maxlength="40" placeholder="Nombre Habilidad II">
+                <select class="dual-ab-type">
+                  <option value="damage" selected>Ataque</option>
+                  <option value="heal">Soporte</option>
+                  <option value="shield">Escudo</option>
+                </select>
+                <input type="number" class="dual-ab-damage" min="15" max="60" value="30" title="Daño">
+                <input type="number" class="dual-ab-cd" min="0" max="5" value="1" title="CD">
+                <input type="number" class="dual-ab-acc" min="10" max="100" step="5" value="100" title="Precisión %">
+              </div>
+              <div class="dual-ability" data-idx="2">
+                <input type="text" class="dual-ab-name" maxlength="40" placeholder="Nombre Habilidad III">
+                <select class="dual-ab-type">
+                  <option value="damage" selected>Ataque</option>
+                  <option value="heal">Soporte</option>
+                  <option value="shield">Escudo</option>
+                </select>
+                <input type="number" class="dual-ab-damage" min="15" max="60" value="30" title="Daño">
+                <input type="number" class="dual-ab-cd" min="0" max="5" value="1" title="CD">
+                <input type="number" class="dual-ab-acc" min="10" max="100" step="5" value="100" title="Precisión %">
+              </div>
+            </details>
+          </div>
+        </section>
+
+        <!-- ===== COLUMNA B ===== -->
+        <section class="dual-col" data-dual="B">
+          <header class="dual-col__header">
+            <span class="dual-col__badge">STAND B</span>
+            <button type="button" class="btn btn--archetype" data-archetype="B">⚡ Arquetipo Rápido</button>
+          </header>
+
+          <div class="dual-col__preview">
+            <div class="tarot-preview tarot-preview--dual">
+              <div class="tarot-preview__inner">
+                <img class="dual-preview-img" id="dualImgB" alt="" hidden>
+                <div class="tarot-preview__placeholder" id="dualPlaceholderB">
+                  <span class="tarot-preview__icon">🂠</span>
+                  <span class="tarot-preview__hint">PNG transparente</span>
+                </div>
+              </div>
+              <div class="tarot-preview__frame"></div>
+            </div>
+            <label class="file-drop file-drop--compact" for="dualImageB">
+              <input type="file" id="dualImageB" accept="image/png,image/webp,image/jpeg" hidden>
+              <span class="file-drop__icon">⇪</span>
+              <span class="file-drop__label">Subir PNG</span>
+            </label>
+          </div>
+
+          <div class="dual-col__fields">
+            <label class="field">
+              <span class="field__label">Artista / Dueño</span>
+              <input type="text" class="dual-artist" maxlength="60" placeholder="Ej. DIO">
+            </label>
+            <label class="field">
+              <span class="field__label">Nombre del Stand</span>
+              <input type="text" class="dual-name" maxlength="60" placeholder="Ej. The World">
+            </label>
+            <label class="field">
+              <span class="field__label">Afinidad</span>
+              <select class="dual-affinity">
+                <option value="Físico">Físico</option>
+                <option value="Fuego">Fuego</option>
+                <option value="Agua">Agua</option>
+                <option value="Hielo">Hielo</option>
+                <option value="Electricidad">Electricidad</option>
+                <option value="Magnetismo">Magnetismo</option>
+                <option value="Tiempo">Tiempo</option>
+                <option value="Gravedad">Gravedad</option>
+                <option value="Veneno">Veneno</option>
+              </select>
+            </label>
+
+            <div class="dual-stats">
+              <label class="field field--stat"><span class="field__label">PWR</span>
+                <select class="dual-stat" data-stat="power"><option>A</option><option selected>B</option><option>C</option><option>D</option><option>E</option></select>
+              </label>
+              <label class="field field--stat"><span class="field__label">SPD</span>
+                <select class="dual-stat" data-stat="speed"><option>A</option><option selected>B</option><option>C</option><option>D</option><option>E</option></select>
+              </label>
+              <label class="field field--stat"><span class="field__label">RNG</span>
+                <select class="dual-stat" data-stat="range"><option>A</option><option selected>B</option><option>C</option><option>D</option><option>E</option></select>
+              </label>
+              <label class="field field--stat"><span class="field__label">DUR</span>
+                <select class="dual-stat" data-stat="durability"><option>A</option><option selected>B</option><option>C</option><option>D</option><option>E</option></select>
+              </label>
+              <label class="field field--stat"><span class="field__label">PRC</span>
+                <select class="dual-stat" data-stat="precision"><option>A</option><option selected>B</option><option>C</option><option>D</option><option>E</option></select>
+              </label>
+              <label class="field field--stat"><span class="field__label">POT</span>
+                <select class="dual-stat" data-stat="potential"><option>A</option><option selected>B</option><option>C</option><option>D</option><option>E</option></select>
+              </label>
+            </div>
+
+            <details class="dual-abilities">
+              <summary>Habilidades (3)</summary>
+              <div class="dual-ability" data-idx="0">
+                <input type="text" class="dual-ab-name" maxlength="40" placeholder="Nombre Habilidad I">
+                <select class="dual-ab-type">
+                  <option value="damage" selected>Ataque</option>
+                  <option value="heal">Soporte</option>
+                  <option value="shield">Escudo</option>
+                </select>
+                <input type="number" class="dual-ab-damage" min="15" max="60" value="30" title="Daño">
+                <input type="number" class="dual-ab-cd" min="0" max="5" value="1" title="CD">
+                <input type="number" class="dual-ab-acc" min="10" max="100" step="5" value="100" title="Precisión %">
+              </div>
+              <div class="dual-ability" data-idx="1">
+                <input type="text" class="dual-ab-name" maxlength="40" placeholder="Nombre Habilidad II">
+                <select class="dual-ab-type">
+                  <option value="damage" selected>Ataque</option>
+                  <option value="heal">Soporte</option>
+                  <option value="shield">Escudo</option>
+                </select>
+                <input type="number" class="dual-ab-damage" min="15" max="60" value="30" title="Daño">
+                <input type="number" class="dual-ab-cd" min="0" max="5" value="1" title="CD">
+                <input type="number" class="dual-ab-acc" min="10" max="100" step="5" value="100" title="Precisión %">
+              </div>
+              <div class="dual-ability" data-idx="2">
+                <input type="text" class="dual-ab-name" maxlength="40" placeholder="Nombre Habilidad III">
+                <select class="dual-ab-type">
+                  <option value="damage" selected>Ataque</option>
+                  <option value="heal">Soporte</option>
+                  <option value="shield">Escudo</option>
+                </select>
+                <input type="number" class="dual-ab-damage" min="15" max="60" value="30" title="Daño">
+                <input type="number" class="dual-ab-cd" min="0" max="5" value="1" title="CD">
+                <input type="number" class="dual-ab-acc" min="10" max="100" step="5" value="100" title="Precisión %">
+              </div>
+            </details>
+          </div>
+        </section>
+
+      </div>
+
+      <div class="dual-actions">
+        <button type="button" class="btn btn--ghost" id="btnCancelDual">Cancelar</button>
+        <button type="button" class="btn btn--gold btn--dual-save" id="btnSaveDual">⚡ GUARDAR AMBOS STANDS</button>
+      </div>
+    </div>
+  </div>
 
   <!-- ===== TOAST / NOTIFICACIONES ===== -->
   <div class="toast-stack" id="toastStack" aria-live="polite"></div>

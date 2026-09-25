@@ -1287,25 +1287,41 @@
       tooltipType.setAttribute('data-kind', kind);
   
       tooltipDesc.textContent = ability.description || '';
-          // --- Footer contextual por tipo ---
-        if (kind === 'heal') {
-          const healPct = 0.22;
-          const estHeal = Math.round((battle ? (battle[getSideOfActive()]?.maxHp || 100) : 100) * healPct);
-          tooltipDamage.textContent = `+${estHeal} HP · Curación`;
-          tooltipCd.textContent = `CD ${ability.cooldown || 0} turno${(ability.cooldown || 0) === 1 ? '' : 's'}`;
-        } else if (kind === 'shield') {
-          tooltipDamage.textContent = 'Defensa 50%';
-          tooltipCd.textContent = `CD ${ability.cooldown || 0} turno${(ability.cooldown || 0) === 1 ? '' : 's'}`;
-        } else {
-          // damage (default)
-          const acc = clampNumber(ability.accuracy, 10, 100, 100);
-          tooltipDamage.textContent = `${ability.damage || 0} daño`;
-          tooltipCd.textContent = `${acc}% Precisión · CD ${ability.cooldown || 0}`;
-        }
-        function getSideOfActive() {
-          if (!battle) return 'p1';
-          return battle.activeSide;
-        }
+              // --- Footer contextual por tipo ---
+    if (kind === 'heal') {
+      const healPct = 0.22;
+      const fighter = battle ? battle[battle.activeSide] : null;
+      const estHeal = fighter ? Math.round(fighter.maxHp * healPct) : 100;
+      tooltipDamage.innerHTML = `<span style="color:var(--ready-hi);">+${estHeal} HP · Curación</span>`;
+      tooltipCd.textContent = `CD ${ability.cooldown || 0} turno${(ability.cooldown || 0) === 1 ? '' : 's'}`;
+    } else if (kind === 'shield') {
+      tooltipDamage.innerHTML = `<span style="color:var(--accent-cyan);">Defensa 50%</span>`;
+      tooltipCd.textContent = `CD ${ability.cooldown || 0} turno${(ability.cooldown || 0) === 1 ? '' : 's'}`;
+    } else {
+      const acc = clampNumber(ability.accuracy, 10, 100, 100);
+      const defender = battle ? battle[battle.activeSide === 'p1' ? 'p2' : 'p1'] : null;
+      const attackerFighter = battle ? battle[battle.activeSide] : null;
+
+      let projected = { damage: ability.damage || 30, pct: 0 };
+      if (defender && attackerFighter) {
+        projected = computeProjectedDamage(
+          { ...attackerFighter.data, __fighterRef: attackerFighter },
+          defender.data,
+          ability,
+          'damage'
+        );
+      }
+
+      if (projected.pct > 0) {
+        tooltipDamage.innerHTML = `${projected.damage} daño <span style="color:var(--ready-hi);font-weight:700;">(+${projected.pct}%)</span>`;
+      } else if (projected.pct < 0) {
+        tooltipDamage.innerHTML = `${projected.damage} daño <span style="color:#ff8a70;font-weight:700;">(${projected.pct}%)</span>`;
+      } else {
+        tooltipDamage.textContent = `${projected.damage} daño`;
+      }
+
+      tooltipCd.textContent = `${acc}% Precisión · CD ${ability.cooldown || 0}`;
+    }
   
       // Posicionamiento
       skillTooltip.hidden = false;
@@ -2472,6 +2488,37 @@
     };
   }
     
+      /* =========================================================
+     DAÑO PROYECTADO (solo para previsualización en UI)
+     Aplica PWR + terreno + penalización, SIN crítico ni aleatoriedad.
+     ========================================================= */
+  function computeProjectedDamage(attacker, defender, ability, kind) {
+    if (!attacker || !defender || !ability) return { damage: 0, mult: 1, pct: 0 };
+
+    // Heal / Shield no tienen daño proyectado
+    if (kind === 'heal' || kind === 'shield') {
+      return { damage: 0, mult: 1, pct: 0 };
+    }
+
+    let base = Number(ability.damage) || 30;
+    const pwrBonus = PWR_BASIC_BONUS[attacker.stats.power] || 0;
+    base += pwrBonus * 0.6;
+
+    // Multiplicador de terreno (respeta boost de evento si existe)
+    const mult = getTerrainMultiplier(attacker, attacker.__fighterRef || null);
+    let projected = base * mult;
+
+    // Reducción por durabilidad del defensor
+    projected *= (1 - getDurReduction(defender.stats.durability));
+
+    const pct = Math.round((mult - 1) * 100);
+    return {
+      damage: Math.max(1, Math.round(projected)),
+      mult,
+      pct
+    };
+  }
+
         /* =========================================================
      SELECCIÓN DE ACCIÓN AUTOMÁTICA (IA / auto-play)
      - Si el Ataque Básico está bloqueado, solo habilidades
@@ -2867,11 +2914,24 @@
       btnBasicAttack.disabled = false;
       btnBasicAttack.classList.remove('is-locked');
       btnBasicAttack.removeAttribute('title');
-      const basicPwr = PWR_BASIC_BONUS[active.data.stats.power] || 0;
-      const estDamage = Math.round(
-        (BASIC_ATTACK_BASE + basicPwr) * getTerrainMultiplier(active.data, active)
+
+      const defender = battle[battle.activeSide === 'p1' ? 'p2' : 'p1'];
+
+      // Daño proyectado del básico
+      const basicProj = computeProjectedDamage(
+        { ...active.data, __fighterRef: active },
+        defender.data,
+        { damage: BASIC_ATTACK_BASE + (PWR_BASIC_BONUS[active.data.stats.power] || 0) },
+        'damage'
       );
-      basicAttackMeta.textContent = `≈${estDamage} daño`;
+
+      if (basicProj.pct > 0) {
+        basicAttackMeta.innerHTML = `${basicProj.damage} daño <span style="color:var(--ready-hi);font-weight:700;">(+${basicProj.pct}%)</span>`;
+      } else if (basicProj.pct < 0) {
+        basicAttackMeta.innerHTML = `${basicProj.damage} daño <span style="color:#ff8a70;font-weight:700;">(${basicProj.pct}%)</span>`;
+      } else {
+        basicAttackMeta.textContent = `${basicProj.damage} daño`;
+      }
     }
     
         // Habilidades
@@ -2913,7 +2973,22 @@
             } else if (kind === 'shield') {
               metaEl.innerHTML = `<span style="color:var(--accent-cyan);font-weight:700;">Defensa 50%</span>`;
             } else {
-              metaEl.innerHTML = `${ability.damage} daño · ${acc}% Precisión`;
+              // Daño proyectado con terreno
+              const defender = battle[battle.activeSide === 'p1' ? 'p2' : 'p1'];
+              const proj = computeProjectedDamage(
+                { ...active.data, __fighterRef: active },
+                defender.data,
+                ability,
+                'damage'
+              );
+    
+              if (proj.pct > 0) {
+                metaEl.innerHTML = `${proj.damage} daño <span style="color:var(--ready-hi);font-weight:700;">(+${proj.pct}%)</span> · ${acc}% Prec.`;
+              } else if (proj.pct < 0) {
+                metaEl.innerHTML = `${proj.damage} daño <span style="color:#ff8a70;font-weight:700;">(${proj.pct}%)</span> · ${acc}% Prec.`;
+              } else {
+                metaEl.innerHTML = `${proj.damage} daño · ${acc}% Prec.`;
+              }
             }
     
             metaEl.classList.remove('action-btn__meta--cd');
@@ -3153,6 +3228,278 @@
         bindModule2Events();
       }
 
+        /* =========================================================
+     MÓDULO DUAL — CREACIÓN DE 2 STANDS A LA VEZ
+     ========================================================= */
+  const dualState = {
+    A: { imageBase64: null, imageMime: null },
+    B: { imageBase64: null, imageMime: null }
+  };
+
+  // Refs
+  const dualModalBackdrop = $('#dualModalBackdrop');
+  const btnAddDual        = $('#btnAddDual');
+  const btnCloseDualModal = $('#btnCloseDualModal');
+  const btnCancelDual     = $('#btnCancelDual');
+  const btnSaveDual       = $('#btnSaveDual');
+
+  /* =========================================================
+     ARQUETIPO RÁPIDO (defaults balanceados)
+     ========================================================= */
+  const ARCHETYPE_ABILITY_POOL = [
+    { name: 'Golpe Veloz',      type: 'damage', damage: 32, cooldown: 1, accuracy: 100, description: 'Ráfaga de golpes a velocidad luz.' },
+    { name: 'Contraataque',     type: 'damage', damage: 40, cooldown: 2, accuracy: 95,  description: 'Aprovecha el descuido del rival.' },
+    { name: 'Segundo Aliento',  type: 'heal',   damage: 15, cooldown: 3, accuracy: 100, description: 'Recupera fuerzas en pleno combate.' },
+    { name: 'Guardia de Hierro',type: 'shield', damage: 15, cooldown: 2, accuracy: 100, description: 'Endurece la defensa contra el próximo golpe.' },
+    { name: 'Onda Cortante',    type: 'damage', damage: 45, cooldown: 3, accuracy: 90,  description: 'Corte de energía a distancia.' },
+    { name: 'Pulso Sanador',    type: 'heal',   damage: 15, cooldown: 3, accuracy: 100, description: 'Una onda recorre el Stand y lo repara.' }
+  ];
+
+  function pickRandomAbilities() {
+    const pool = [...ARCHETYPE_ABILITY_POOL];
+    const picks = [];
+    for (let i = 0; i < 3 && pool.length; i++) {
+      const idx = Math.floor(Math.random() * pool.length);
+      picks.push(pool.splice(idx, 1)[0]);
+    }
+    return picks;
+  }
+
+  function applyArchetypeToColumn(side) {
+    const col = document.querySelector(`.dual-col[data-dual="${side}"]`);
+    if (!col) return;
+
+    // Stats balanceados
+    col.querySelectorAll('.dual-stat').forEach((sel) => {
+      sel.value = 'B';
+    });
+
+    // Afinidad aleatoria
+    const affinities = ['Físico', 'Fuego', 'Agua', 'Hielo', 'Electricidad', 'Magnetismo', 'Tiempo', 'Gravedad', 'Veneno'];
+    const affSel = col.querySelector('.dual-affinity');
+    if (affSel) affSel.value = affinities[Math.floor(Math.random() * affinities.length)];
+
+    // Habilidades balanceadas
+    const abilities = pickRandomAbilities();
+    col.querySelectorAll('.dual-ability').forEach((row, i) => {
+      const ab = abilities[i];
+      if (!ab) return;
+      row.querySelector('.dual-ab-name').value = ab.name;
+      row.querySelector('.dual-ab-type').value = ab.type;
+      row.querySelector('.dual-ab-damage').value = ab.damage;
+      row.querySelector('.dual-ab-cd').value = ab.cooldown;
+      row.querySelector('.dual-ab-acc').value = ab.accuracy;
+    });
+
+    // Nombres placeholder para que no queden vacíos
+    const artistInput = col.querySelector('.dual-artist');
+    const nameInput = col.querySelector('.dual-name');
+    if (!artistInput.value) artistInput.value = `Artista ${side}`;
+    if (!nameInput.value)   nameInput.value   = `Stand ${side}`;
+
+    toast(`Arquetipo rápido aplicado a Stand ${side}.`, 'success');
+  }
+
+  /* =========================================================
+     ABRIR / CERRAR
+     ========================================================= */
+  function resetDualForm() {
+    const modal = dualModalBackdrop;
+    if (!modal) return;
+
+    // Reset inputs de cada columna
+    ['A', 'B'].forEach((side) => {
+      const col = modal.querySelector(`.dual-col[data-dual="${side}"]`);
+      if (!col) return;
+
+      col.querySelectorAll('input[type="text"]').forEach((i) => { i.value = ''; });
+      col.querySelectorAll('input[type="number"]').forEach((i) => {
+        if (i.classList.contains('dual-ab-damage')) i.value = 30;
+        else if (i.classList.contains('dual-ab-cd')) i.value = 1;
+        else if (i.classList.contains('dual-ab-acc')) i.value = 100;
+      });
+      col.querySelectorAll('.dual-stat').forEach((s) => { s.value = 'B'; });
+      const affSel = col.querySelector('.dual-affinity');
+      if (affSel) affSel.value = 'Físico';
+      col.querySelectorAll('.dual-ability').forEach((row) => {
+        row.querySelector('.dual-ab-type').value = 'damage';
+      });
+
+      // Reset preview
+      const imgEl = col.querySelector('.dual-preview-img');
+      const phEl  = col.querySelector('.tarot-preview__placeholder');
+      if (imgEl) { imgEl.src = ''; imgEl.hidden = true; }
+      if (phEl)  phEl.hidden = false;
+    });
+
+    dualState.A = { imageBase64: null, imageMime: null };
+    dualState.B = { imageBase64: null, imageMime: null };
+  }
+
+  function openDualModal() {
+    resetDualForm();
+    dualModalBackdrop.hidden = false;
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeDualModal() {
+    dualModalBackdrop.hidden = true;
+    document.body.style.overflow = '';
+    resetDualForm();
+  }
+
+  /* =========================================================
+     RECOLECCIÓN DE UNA COLUMNA
+     ========================================================= */
+  function collectDualColumn(side) {
+    const col = document.querySelector(`.dual-col[data-dual="${side}"]`);
+    if (!col) return null;
+
+    const stats = {};
+    col.querySelectorAll('.dual-stat').forEach((sel) => {
+      stats[sel.dataset.stat] = sel.value;
+    });
+
+    const abilities = Array.from(col.querySelectorAll('.dual-ability')).map((row) => ({
+      name: (row.querySelector('.dual-ab-name').value || '').trim(),
+      type: row.querySelector('.dual-ab-type').value,
+      damage: clampNumber(row.querySelector('.dual-ab-damage').value, 15, 60, 30),
+      cooldown: clampNumber(row.querySelector('.dual-ab-cd').value, 0, 5, 1),
+      accuracy: clampNumber(row.querySelector('.dual-ab-acc').value, 10, 100, 100),
+      description: ''
+    }));
+
+    return {
+      artistName: (col.querySelector('.dual-artist').value || '').trim(),
+      standName: (col.querySelector('.dual-name').value || '').trim(),
+      affinity: col.querySelector('.dual-affinity').value,
+      battleCry: '',
+      stats,
+      abilities,
+      image: dualState[side].imageBase64 || null,
+      imageMime: dualState[side].imageMime || null
+    };
+  }
+
+  /* =========================================================
+     GUARDAR AMBOS
+     ========================================================= */
+  function saveDualStands() {
+    const dataA = collectDualColumn('A');
+    const dataB = collectDualColumn('B');
+
+    // Validaciones
+    const errors = [];
+    if (!dataA.artistName) errors.push('Stand A: falta el nombre del artista.');
+    if (!dataA.standName)  errors.push('Stand A: falta el nombre del Stand.');
+    if (!dataB.artistName) errors.push('Stand B: falta el nombre del artista.');
+    if (!dataB.standName)  errors.push('Stand B: falta el nombre del Stand.');
+
+    if (errors.length) {
+      toast(errors[0], 'error');
+      return;
+    }
+
+    if (roster.length + 2 > MAX_PARTICIPANTS) {
+      toast(`No caben 2 Stands más. Límite ${MAX_PARTICIPANTS}.`, 'error');
+      return;
+    }
+
+    // Construir los dos payloads con los campos de torneo por defecto
+    const buildPayload = (data) => ({
+      id: uid(),
+      artistName: data.artistName,
+      standName: data.standName,
+      affinity: data.affinity,
+      battleCry: data.battleCry || '',
+      stats: data.stats,
+      abilities: data.abilities,
+      image: data.image,
+      imageMime: data.imageMime,
+      level: DEFAULT_LEVEL,
+      isDefeated: false,
+      defeatedAt: null,
+      lastHp: null,
+      tournamentDamage: 0,
+      tournamentBattles: 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+
+    roster.push(buildPayload(dataA));
+    roster.push(buildPayload(dataB));
+
+    // Asegurar que las afinidades personalizadas se registren si hicieran falta
+    // (aquí solo manejamos las base; si el usuario añade custom lo hará vía edición individual)
+
+    saveRoster();
+    renderCounter();
+    renderGallery();
+
+    toast(`¡${dataA.standName} y ${dataB.standName} añadidos al roster!`, 'success');
+    closeDualModal();
+  }
+
+  /* =========================================================
+     EVENTOS DEL MODAL DUAL
+     ========================================================= */
+  function bindDualEvents() {
+    if (!btnAddDual) return;
+
+    btnAddDual.addEventListener('click', openDualModal);
+    btnCloseDualModal.addEventListener('click', closeDualModal);
+    btnCancelDual.addEventListener('click', closeDualModal);
+    btnSaveDual.addEventListener('click', saveDualStands);
+
+    dualModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === dualModalBackdrop) closeDualModal();
+    });
+
+    // Arquetipo rápido por columna
+    dualModalBackdrop.querySelectorAll('[data-archetype]').forEach((btn) => {
+      btn.addEventListener('click', () => applyArchetypeToColumn(btn.dataset.archetype));
+    });
+
+    // Imágenes
+    ['A', 'B'].forEach((side) => {
+      const input = document.getElementById(`dualImage${side}`);
+      const imgEl = document.getElementById(`dualImg${side}`);
+      const phEl  = document.getElementById(`dualPlaceholder${side}`);
+      if (!input) return;
+
+      input.addEventListener('change', async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        if (!/^image\//.test(file.type)) {
+          toast('El archivo debe ser una imagen.', 'error');
+          e.target.value = '';
+          return;
+        }
+        const MAX_MB = 4;
+        if (file.size > MAX_MB * 1024 * 1024) {
+          toast(`La imagen supera ${MAX_MB} MB.`, 'error');
+          e.target.value = '';
+          return;
+        }
+        try {
+          const { dataUrl, mime } = await readImageAsBase64(file);
+          dualState[side].imageBase64 = dataUrl;
+          dualState[side].imageMime = mime;
+          imgEl.src = dataUrl;
+          imgEl.hidden = false;
+          if (phEl) phEl.hidden = true;
+        } catch (err) {
+          console.error(err);
+          toast('No se pudo procesar la imagen.', 'error');
+        }
+      });
+    });
+
+    // ESC cierra
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !dualModalBackdrop.hidden) closeDualModal();
+    });
+  }
     /* =========================================================
        INIT
        ========================================================= */
@@ -3165,7 +3512,8 @@
         initModule2();
         initModule3();
         initModule4();
-        initEventsConfig(); // ← NUEVO
+        initEventsConfig();
+        bindDualEvents(); // ← NUEVO
       }
     
       function initEventsConfig() {

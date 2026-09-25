@@ -3673,5 +3673,188 @@
   animation: bonusPulse 1.6s ease-in-out infinite;
 }
 
+/* ============================================================
+   MODAL DUAL — CREACIÓN 2 STANDS A LA VEZ
+   ============================================================ */
+
+   .btn--dual {
+    background: linear-gradient(180deg, #6c5ce7, #4834b8);
+    color: #fff;
+    border-color: #a89bff;
+    box-shadow: 0 4px 14px rgba(108, 92, 231, 0.35);
+  }
+  .btn--dual:hover {
+    background: linear-gradient(180deg, #8577ff, #5b47d4);
+    box-shadow: 0 6px 20px rgba(108, 92, 231, 0.55);
+  }
+  
+  .modal--dual {
+    max-width: 1280px;
+    width: calc(100% - 32px);
+  }
+  
+  .dual-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    max-height: calc(100vh - 200px);
+    overflow: hidden;
+  }
+  
+  .dual-col {
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow-y: auto;
+    max-height: calc(100vh - 200px);
+  }
+  
+  .dual-col:first-child {
+    border-right: 1px solid var(--line-strong);
+  }
+  
+  .dual-col__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  
+  .dual-col__badge {
+    font-family: var(--font-display);
+    font-size: 0.85rem;
+    font-weight: 900;
+    letter-spacing: 0.22em;
+    color: var(--gold-0);
+    text-shadow: 0 0 14px var(--gold-shadow);
+  }
+  
+  .btn--archetype {
+    padding: 6px 12px;
+    font-size: 0.65rem;
+    background: linear-gradient(180deg, rgba(230, 198, 106, 0.18), rgba(230, 198, 106, 0.05));
+    border-color: var(--gold-2);
+    color: var(--gold-0);
+  }
+  .btn--archetype:hover {
+    background: linear-gradient(180deg, rgba(230, 198, 106, 0.32), rgba(230, 198, 106, 0.1));
+    box-shadow: 0 0 14px var(--gold-shadow);
+  }
+  
+  .dual-col__preview {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+  
+  .tarot-preview--dual {
+    max-width: 160px;
+    width: 100%;
+    margin: 0 auto;
+  }
+  
+  .tarot-preview--dual .tarot-preview__inner img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    object-position: center bottom;
+  }
+  
+  .file-drop--compact {
+    padding: 8px 12px;
+    flex-direction: row;
+    gap: 6px;
+  }
+  .file-drop--compact .file-drop__label { font-size: 0.65rem; }
+  .file-drop--compact .file-drop__icon { font-size: 0.9rem; }
+  
+  .dual-col__fields {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .dual-stats {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 6px;
+  }
+  
+  .dual-stats .field--stat select {
+    padding: 6px 4px;
+    font-size: 0.95rem;
+  }
+  
+  .dual-stats .field__label {
+    font-size: 0.58rem;
+    letter-spacing: 0.05em;
+  }
+  
+  .dual-abilities summary {
+    cursor: pointer;
+    font-family: var(--font-display);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--gold-1);
+    padding: 6px 0;
+  }
+  
+  .dual-ability {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 0.8fr 0.6fr 0.8fr;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  
+  .dual-ability input,
+  .dual-ability select {
+    padding: 6px 8px;
+    background: rgba(10, 8, 16, 0.7);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    color: var(--ink-0);
+    font-size: 0.8rem;
+  }
+  
+  .dual-ability select {
+    font-family: var(--font-display);
+    font-weight: 700;
+  }
+  
+  .dual-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 14px 22px;
+    border-top: 1px solid var(--line-strong);
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.25), transparent);
+  }
+  
+  .btn--dual-save {
+    padding: 12px 28px;
+    font-size: 0.85rem;
+    letter-spacing: 0.14em;
+  }
+  
+  /* Pestañas en mobile */
+  @media (max-width: 900px) {
+    .dual-grid {
+      grid-template-columns: 1fr;
+    }
+    .dual-col:first-child {
+      border-right: 0;
+      border-bottom: 1px solid var(--line-strong);
+    }
+    .dual-col { max-height: none; }
+    .dual-stats { grid-template-columns: repeat(3, 1fr); }
+    .dual-ability { grid-template-columns: 1fr 1fr; }
+  }
+
   /* ===== UTILIDADES ===== */
   [hidden] { display: none !important; }
