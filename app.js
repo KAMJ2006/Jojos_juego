@@ -141,7 +141,7 @@
     const btnCancelStage  = $('#btnCancelStage');
     const stageForm       = $('#stageForm');
     const stageNameInput  = $('#stageNameInput');
-    const stageAffinityInput = $('#stageAffinityInput');
+    
     const stageImageInput = $('#stageImageInput');
     const stagePreviewImage = $('#stagePreviewImage');
     const stagePreviewPlaceholder = $('#stagePreviewPlaceholder');
@@ -657,7 +657,8 @@
     const emptyState       = $('#emptyState');
     const participantsEl   = $('#participantsCounter');
 
-    const stageAffinityPenaltyInput = $('#stageAffinityPenaltyInput');
+    const favorableChipsContainer = document.getElementById('favorableAffinityChips');
+    const unfavorableChipsContainer = document.getElementById('unfavorableAffinityChips');
 
     const btnAddNew        = $('#btnAddNew');
     const btnExport        = $('#btnExport');
@@ -701,6 +702,38 @@
         roster = [];
       }
     }
+
+      /* =========================================================
+     RENDER DE CHIPS DE AFINIDAD EN EL MODAL
+     - Renderiza todas las afinidades disponibles (base + custom)
+     - Marca las seleccionadas según los arreglos guardados
+     ========================================================= */
+  function populateStageAffinityChips(selectedFavorable, selectedUnfavorable) {
+    const all = getAllAffinities();
+    const favSet = new Set((selectedFavorable || []).map((s) => String(s).toLowerCase()));
+    const unfavSet = new Set((selectedUnfavorable || []).map((s) => String(s).toLowerCase()));
+
+    const renderInto = (container, set) => {
+      if (!container) return;
+      container.innerHTML = '';
+      for (const aff of all) {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'affinity-chip' + (set.has(aff.toLowerCase()) ? ' is-selected' : '');
+        chip.dataset.affinity = aff;
+        chip.textContent = aff;
+        chip.setAttribute('aria-pressed', String(set.has(aff.toLowerCase())));
+        chip.addEventListener('click', () => {
+          const isSel = chip.classList.toggle('is-selected');
+          chip.setAttribute('aria-pressed', String(isSel));
+        });
+        container.appendChild(chip);
+      }
+    };
+
+    renderInto(favorableChipsContainer, favSet);
+    renderInto(unfavorableChipsContainer, unfavSet);
+  }
   
     function safeSetItem(key, value, label = 'datos') {
       const payload = typeof value === 'string' ? value : JSON.stringify(value);
@@ -730,7 +763,19 @@
     }
   
     function saveStages() {
-      return safeSetItem(STAGES_KEY, stages, 'escenarios');
+      try {
+        const payload = JSON.stringify(stages);
+        localStorage.setItem(STAGES_KEY, payload);
+        return true;
+      } catch (err) {
+        console.error('[JoJo Roster] Error al guardar escenarios:', err);
+        if (err && (err.name === 'QuotaExceededError' || err.code === 22 || err.code === 1014)) {
+          toast('⚠ Cuota de almacenamiento excedida al guardar escenarios. Reduce el tamaño de las imágenes.', 'error');
+        } else {
+          toast('No se pudieron guardar los escenarios.', 'error');
+        }
+        return false;
+      }
     }
   
     function loadReadyFlag() {
@@ -1971,33 +2016,132 @@
       /* =========================================================
      MÓDULO 2 — PERSISTENCIA DE ESCENARIOS
      ========================================================= */
-     function loadStages() {
-      try {
-        const raw = localStorage.getItem(STAGES_KEY);
-        const parsed = raw ? JSON.parse(raw) : [];
-        stages = Array.isArray(parsed)
-          ? parsed.map(normalizeStage).filter(Boolean)
-          : [];
-      } catch (err) {
-        console.error('[JoJo Roster] Error cargando escenarios:', err);
-        stages = [];
-      }
-    }
+       /* =========================================================
+     CARGA DE ESCENARIOS DESDE LOCALSTORAGE
+     - Si no hay nada guardado, usa la lista por defecto (si existe).
+     - Preserva favorableAffinities / unfavorableAffinities intactos.
+     - Aplica normalización superficial SOLO para retrocompatibilidad,
+       sin sobreescribir los arreglos existentes.
+     ========================================================= */
+  function loadStages() {
+    try {
+      const raw = localStorage.getItem(STAGES_KEY);
 
-  function normalizeStage(raw) {
-    if (!raw || typeof raw !== 'object') return null;
-    return {
-      id: typeof raw.id === 'string' && raw.id ? raw.id : uid(),
-      name: String(raw.name || 'Escenario sin nombre').slice(0, 60),
-      affinity: String(raw.affinity || 'Físico').slice(0, 30),
-      penalizedAffinity: raw.penalizedAffinity ? String(raw.penalizedAffinity).slice(0, 30) : '',
-      image: typeof raw.image === 'string' ? raw.image : null,
-      imageMime: typeof raw.imageMime === 'string' ? raw.imageMime : null,
-      createdAt: Number(raw.createdAt) || Date.now(),
-      updatedAt: Number(raw.updatedAt) || null
-    };
+      // 1) Sin datos guardados → usar lista por defecto (si la app la define)
+      if (!raw) {
+        const DEFAULT_STAGES = (typeof window !== 'undefined' && window.JJA_DEFAULT_STAGES)
+          ? window.JJA_DEFAULT_STAGES
+          : [];
+        stages = Array.isArray(DEFAULT_STAGES)
+          ? DEFAULT_STAGES.map(normalizeStage).filter(Boolean)
+          : [];
+        // Persistir la lista por defecto en el primer arranque
+        if (stages.length > 0) saveStages();
+        return;
+      }
+
+      // 2) Datos guardados → parsear y normalizar sin perder arreglos
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        stages = [];
+        return;
+      }
+
+      stages = parsed
+        .map(normalizeStage)
+        .filter(Boolean);
+    } catch (err) {
+      console.error('[JoJo Roster] Error al cargar escenarios desde localStorage:', err);
+      stages = [];
+    }
   }
 
+    /* =========================================================
+     NORMALIZACIÓN DE UN ESCENARIO
+     - Conserva favorableAffinities / unfavorableAffinities tal cual.
+     - Retrocompatibilidad: si solo vienen los campos antiguos
+       (affinity / penalizedAffinity), se convierten a arreglos.
+     ========================================================= */
+     function normalizeStage(raw) {
+      if (!raw || typeof raw !== 'object') return null;
+  
+      const DEFAULT_PCT = 15;
+  
+      // --- Listas favorecidas ---
+      let favorableAffinities = [];
+      if (Array.isArray(raw.favorableAffinities) && raw.favorableAffinities.length > 0) {
+        favorableAffinities = raw.favorableAffinities
+          .map((item) => {
+            if (typeof item === 'string') {
+              return { affinity: item.trim(), boostPct: DEFAULT_PCT };
+            }
+            if (item && typeof item === 'object' && item.affinity) {
+              const pct = Number(item.boostPct);
+              return {
+                affinity: String(item.affinity).trim(),
+                boostPct: Number.isFinite(pct) ? pct : DEFAULT_PCT
+              };
+            }
+            return null;
+          })
+          .filter((x) => x && x.affinity);
+      } else if (raw.affinity) {
+        // Retrocompatibilidad: campo singular antiguo
+        favorableAffinities = [{ affinity: String(raw.affinity).trim(), boostPct: DEFAULT_PCT }];
+      }
+  
+      // --- Listas desfavorables ---
+      let unfavorableAffinities = [];
+      if (Array.isArray(raw.unfavorableAffinities) && raw.unfavorableAffinities.length > 0) {
+        unfavorableAffinities = raw.unfavorableAffinities
+          .map((item) => {
+            if (typeof item === 'string') {
+              return { affinity: item.trim(), penaltyPct: DEFAULT_PCT };
+            }
+            if (item && typeof item === 'object' && item.affinity) {
+              const pct = Number(item.penaltyPct);
+              return {
+                affinity: String(item.affinity).trim(),
+                penaltyPct: Number.isFinite(pct) ? pct : DEFAULT_PCT
+              };
+            }
+            return null;
+          })
+          .filter((x) => x && x.affinity);
+      } else if (raw.penalizedAffinity) {
+        unfavorableAffinities = [{ affinity: String(raw.penalizedAffinity).trim(), penaltyPct: DEFAULT_PCT }];
+      }
+  
+      // Deduplicar por afinidad (case-insensitive)
+      const dedupe = (list) => {
+        const seen = new Set();
+        return list.filter((it) => {
+          const k = it.affinity.toLowerCase();
+          if (seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        });
+      };
+  
+      favorableAffinities = dedupe(favorableAffinities);
+      unfavorableAffinities = dedupe(unfavorableAffinities);
+  
+      return {
+        id: typeof raw.id === 'string' && raw.id ? raw.id : uid(),
+        name: String(raw.name || 'Escenario sin nombre').slice(0, 60),
+        // --- Preservar arreglos intactos ---
+        favorableAffinities,
+        unfavorableAffinities,
+        // --- Espejo de retrocompatibilidad (primer elemento) ---
+        affinity: favorableAffinities[0]?.affinity || '',
+        penalizedAffinity: unfavorableAffinities[0]?.affinity || '',
+        // --- Imagen y metadatos ---
+        image: typeof raw.image === 'string' ? raw.image : null,
+        imageMime: typeof raw.imageMime === 'string' ? raw.imageMime : null,
+        createdAt: Number(raw.createdAt) || Date.now(),
+        updatedAt: Number(raw.updatedAt) || null
+      };
+    }
 
   /* =========================================================
      MÓDULO 2 — RENDER DE ESCENARIOS
@@ -2031,11 +2175,23 @@
       ? `<img class="stage-card__img" src="${escapeHtml(stage.image)}" alt="${escapeHtml(stage.name)}">`
       : `<div class="stage-card__img stage-card__img--empty">🏙</div>`;
 
-    const favoredChip = stage.affinity
-      ? `<span class="stage-card__mod stage-card__mod--favored" title="Afinidad favorecida +15%">+15% ${escapeHtml(stage.affinity)}</span>`
-      : '';
-    const penalizedChip = stage.penalizedAffinity
-      ? `<span class="stage-card__mod stage-card__mod--penalized" title="Afinidad perjudicada −15%">−15% ${escapeHtml(stage.penalizedAffinity)}</span>`
+    // Normalizar para extraer listas
+    const normalizeFn = window.JJA_EventsData && window.JJA_EventsData.normalizeArena;
+    const normalized = typeof normalizeFn === 'function' ? normalizeFn(stage) : stage;
+
+    const favList = normalized.favorableAffinities || [];
+    const unfavList = normalized.unfavorableAffinities || [];
+
+    const favChips = favList.map((f) =>
+      `<span class="stage-card__mod stage-card__mod--favored" title="Afinidad favorecida +${f.boostPct}%">+${f.boostPct}% ${escapeHtml(f.affinity)}</span>`
+    ).join('');
+
+    const unfavChips = unfavList.map((f) =>
+      `<span class="stage-card__mod stage-card__mod--penalized" title="Afinidad perjudicada −${f.penaltyPct}%">−${f.penaltyPct}% ${escapeHtml(f.affinity)}</span>`
+    ).join('');
+
+    const noMods = favList.length === 0 && unfavList.length === 0
+      ? '<span class="stage-card__mod" style="color:var(--ink-3);background:transparent;border:1px dashed var(--line);">Sin modificadores</span>'
       : '';
 
     card.innerHTML = `
@@ -2043,8 +2199,9 @@
       <div class="stage-card__body">
         <h4 class="stage-card__name" title="${escapeHtml(stage.name)}">${escapeHtml(stage.name)}</h4>
         <div class="stage-card__mods">
-          ${favoredChip}
-          ${penalizedChip}
+          ${favChips}
+          ${unfavChips}
+          ${noMods}
         </div>
         <div class="stage-card__actions">
           <button type="button" class="btn btn--ghost" data-action="edit">✎ Editar</button>
@@ -2077,28 +2234,33 @@
      ========================================================= */
      function openStageModal(editId = null) {
       resetStageForm();
-      populateStageAffinitySelect();
-      populateStagePenaltySelect();
   
       if (editId) {
         const stage = stages.find((s) => s.id === editId);
         if (stage) {
           stageModalTitle.textContent = `Editar Escenario — ${stage.name}`;
           stageNameInput.value = stage.name || '';
-          stageAffinityInput.value = stage.affinity || '';
-          if (stageAffinityPenaltyInput) {
-            stageAffinityPenaltyInput.value = stage.penalizedAffinity || '';
-          }
+  
+          // Normalizar el escenario para extraer listas
+          const normalizeFn = window.JJA_EventsData && window.JJA_EventsData.normalizeArena;
+          const normalized = typeof normalizeFn === 'function' ? normalizeFn(stage) : stage;
+  
+          const favList = (normalized.favorableAffinities || []).map((f) => f.affinity);
+          const unfavList = (normalized.unfavorableAffinities || []).map((f) => f.affinity);
+  
+          populateStageAffinityChips(favList, unfavList);
+  
           // Precargar imagen existente
           pendingStageImageBase64 = stage.image || null;
           pendingStageImageMime = stage.imageMime || null;
           updateStagePreview();
-          // Guardar id en el hidden
+  
           const editInput = document.getElementById('stageEditId');
           if (editInput) editInput.value = editId;
         }
       } else {
         stageModalTitle.textContent = 'Nuevo Escenario';
+        populateStageAffinityChips([], []);
       }
   
       stageModalBackdrop.hidden = false;
@@ -2118,23 +2280,14 @@
     pendingStageImageMime = null;
     const editInput = document.getElementById('stageEditId');
     if (editInput) editInput.value = '';
+
+    // Reset chips
+    populateStageAffinityChips([], []);
+
     updateStagePreview();
   }
 
-  function populateStagePenaltySelect(selectedValue = null) {
-    if (!stageAffinityPenaltyInput) return;
-    const all = getAllAffinities();
-    stageAffinityPenaltyInput.innerHTML = '<option value="">— Ninguna —</option>';
-    for (const aff of all) {
-      const opt = document.createElement('option');
-      opt.value = aff;
-      opt.textContent = aff;
-      stageAffinityPenaltyInput.appendChild(opt);
-    }
-    if (selectedValue && all.includes(selectedValue)) {
-      stageAffinityPenaltyInput.value = selectedValue;
-    }
-  }
+  
 
   function updateStagePreview() {
     if (pendingStageImageBase64) {
@@ -2149,50 +2302,105 @@
   }
 
   function collectStageForm() {
+    const readChips = (container) => {
+      if (!container) return [];
+      return Array.from(container.querySelectorAll('.affinity-chip.is-selected'))
+        .map((c) => c.dataset.affinity);
+    };
+
+    const favorable = readChips(favorableChipsContainer);
+    const unfavorable = readChips(unfavorableChipsContainer);
+
     return {
       name: stageNameInput.value.trim(),
-      affinity: stageAffinityInput.value,
-      penalizedAffinity: stageAffinityPenaltyInput ? (stageAffinityPenaltyInput.value || '') : ''
+      // Guardamos como arreglos de objetos (formato canónico)
+      favorableAffinities: favorable.map((aff) => ({ affinity: aff, boostPct: 15 })),
+      unfavorableAffinities: unfavorable.map((aff) => ({ affinity: aff, penaltyPct: 15 })),
+      // Retrocompatibilidad: campos singulares derivados del primero
+      affinity: favorable[0] || '',
+      penalizedAffinity: unfavorable[0] || ''
     };
   }
 
-  function upsertStage(data) {
-    const editInput = document.getElementById('stageEditId');
-    const editId = editInput && editInput.value ? editInput.value : null;
-
-    if (editId) {
-      const idx = stages.findIndex((s) => s.id === editId);
-      if (idx >= 0) {
+    /* =========================================================
+     GUARDAR / ACTUALIZAR UN ESCENARIO
+     - Persiste SIEMPRE la lista completa en localStorage.
+     - Conserva los arreglos multiafinidad elegidos en el modal.
+     ========================================================= */
+     function upsertStage(data) {
+      const editInput = document.getElementById('stageEditId');
+      const editId = editInput && editInput.value ? editInput.value : null;
+  
+      // Sanitizar listas recibidas del modal (chips)
+      const sanitizeList = (list, pctKey) => {
+        if (!Array.isArray(list)) return [];
+        const seen = new Set();
+        const out = [];
+        for (const item of list) {
+          if (!item || !item.affinity) continue;
+          const key = String(item.affinity).trim().toLowerCase();
+          if (!key || seen.has(key)) continue;
+          seen.add(key);
+          const pct = Number(item[pctKey]);
+          out.push({
+            affinity: String(item.affinity).trim(),
+            [pctKey]: Number.isFinite(pct) ? pct : 15
+          });
+        }
+        return out;
+      };
+  
+      const favorable = sanitizeList(data.favorableAffinities, 'boostPct');
+      const unfavorable = sanitizeList(data.unfavorableAffinities, 'penaltyPct');
+  
+      if (editId) {
+        // --- ACTUALIZAR EXISTENTE ---
+        const idx = stages.findIndex((s) => s.id === editId);
+        if (idx < 0) {
+          toast('Escenario no encontrado para editar.', 'error');
+          return;
+        }
+  
         stages[idx] = {
           ...stages[idx],
-          name: data.name,
-          affinity: data.affinity,
-          penalizedAffinity: data.penalizedAffinity,
+          name: String(data.name || '').slice(0, 60),
+          favorableAffinities: favorable,
+          unfavorableAffinities: unfavorable,
+          // Espejos de retrocompatibilidad
+          affinity: favorable[0]?.affinity || '',
+          penalizedAffinity: unfavorable[0]?.affinity || '',
+          // Imagen: solo se actualiza si el usuario subió una nueva
           image: pendingStageImageBase64 || stages[idx].image || null,
           imageMime: pendingStageImageMime || stages[idx].imageMime || null,
           updatedAt: Date.now()
         };
-        saveStages();
+  
+        const ok = saveStages();
+        if (ok) toast(`Escenario "${stages[idx].name}" actualizado.`, 'success');
         renderStages();
-        toast(`Escenario "${data.name}" actualizado.`, 'success');
         return;
       }
+  
+      // --- CREAR NUEVO ---
+      const payload = {
+        id: uid(),
+        name: String(data.name || '').slice(0, 60),
+        favorableAffinities: favorable,
+        unfavorableAffinities: unfavorable,
+        affinity: favorable[0]?.affinity || '',
+        penalizedAffinity: unfavorable[0]?.affinity || '',
+        image: pendingStageImageBase64 || null,
+        imageMime: pendingStageImageMime || null,
+        createdAt: Date.now(),
+        updatedAt: null
+      };
+  
+      stages.push(payload);
+  
+      const ok = saveStages();
+      if (ok) toast(`Escenario "${payload.name}" guardado.`, 'success');
+      renderStages();
     }
-
-    const payload = {
-      id: uid(),
-      name: data.name,
-      affinity: data.affinity,
-      penalizedAffinity: data.penalizedAffinity,
-      image: pendingStageImageBase64 || null,
-      imageMime: pendingStageImageMime || null,
-      createdAt: Date.now()
-    };
-    stages.push(payload);
-    saveStages();
-    renderStages();
-    toast(`Escenario "${payload.name}" guardado.`, 'success');
-  }
 
   /* =========================================================
      MÓDULO 2 — TRANSICIÓN DE VISTAS
@@ -2664,20 +2872,7 @@
       /* =========================================================
          POBLAR SELECTS DE AFINIDAD
          ========================================================= */
-      function populateStageAffinitySelect(selectedValue = null) {
-        if (!stageAffinityInput) return;
-        const all = getAllAffinities();
-        stageAffinityInput.innerHTML = '';
-        for (const aff of all) {
-          const opt = document.createElement('option');
-          opt.value = aff;
-          opt.textContent = aff;
-          stageAffinityInput.appendChild(opt);
-        }
-        if (selectedValue && all.includes(selectedValue)) {
-          stageAffinityInput.value = selectedValue;
-        }
-      }
+      
     
       function toggleCustomAffinityInput() {
         if (!affinitySelect || !customAffinityField) return;
@@ -2707,6 +2902,18 @@
      MÓDULO 2 — EVENTOS
      ========================================================= */
   function bindModule2Events() {
+        // Botones "Limpiar" de cada grupo de afinidades
+        document.querySelectorAll('.affinity-group__clear').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const group = btn.dataset.clear;
+            const container = group === 'favorable' ? favorableChipsContainer : unfavorableChipsContainer;
+            if (!container) return;
+            container.querySelectorAll('.affinity-chip.is-selected').forEach((c) => {
+              c.classList.remove('is-selected');
+              c.setAttribute('aria-pressed', 'false');
+            });
+          });
+        });
     // Volver al roster
     btnBackToRoster.addEventListener('click', showRosterView);
 
@@ -4781,7 +4988,7 @@
      function initModule2() {
         loadStages();
         renderStages();
-        populateStageAffinitySelect(); // ← primera carga del select de escenarios
+    
         bindModule2Events();
       }
 

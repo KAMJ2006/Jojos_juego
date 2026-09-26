@@ -895,17 +895,33 @@
                          placeholder="Ej. Techo de la Torre del Reloj">
                 </label>
     
-                <label class="field">
-                    <span class="field__label">Afinidad Favorecida <em>(+15% efectividad)</em></span>
-                    <select id="stageAffinityInput" required>
-                      <!-- Se puebla dinámicamente desde app.js:
-                           base + afinidades personalizadas del usuario -->
-                    </select>
-                  </label>
-                  <label class="field">
-                    <span class="field__label">Afinidad Perjudicada <em>(−15% efectividad)</em></span>
-                    <select id="stageAffinityPenaltyInput"></select>
-                  </label>
+                <!-- ===== AFINIDADES FAVORECIDAS ===== -->
+                <div class="affinity-group" data-group="favorable">
+                  <div class="affinity-group__header">
+                    <span class="affinity-group__title">
+                      <span class="affinity-group__icon affinity-group__icon--fav">▲</span>
+                      Afinidades Favorecidas <em>(+15% c/u)</em>
+                    </span>
+                    <button type="button" class="affinity-group__clear" data-clear="favorable" title="Quitar todas">✕ Limpiar</button>
+                  </div>
+                  <div class="affinity-chips" id="favorableAffinityChips" role="group" aria-label="Afinidades favorecidas">
+                    <!-- Chips toggleables inyectadas por JS -->
+                  </div>
+                </div>
+    
+                <!-- ===== AFINIDADES PERJUDICADAS ===== -->
+                <div class="affinity-group" data-group="unfavorable">
+                  <div class="affinity-group__header">
+                    <span class="affinity-group__title">
+                      <span class="affinity-group__icon affinity-group__icon--unfav">▼</span>
+                      Afinidades Perjudicadas <em>(−15% c/u)</em>
+                    </span>
+                    <button type="button" class="affinity-group__clear" data-clear="unfavorable" title="Quitar todas">✕ Limpiar</button>
+                  </div>
+                  <div class="affinity-chips" id="unfavorableAffinityChips" role="group" aria-label="Afinidades perjudicadas">
+                    <!-- Chips toggleables inyectadas por JS -->
+                  </div>
+                </div>
               </fieldset>
 
               <input type="hidden" id="stageEditId" value="">

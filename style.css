@@ -4614,5 +4614,172 @@
 @media (max-width: 620px) {
   .battle-actions__tactical { grid-template-columns: 1fr; }
 }
+
+/* ============================================================
+   MODAL DE ESCENARIO — CHIPS DE AFINIDAD MULTISELECCIÓN
+   ============================================================ */
+   .affinity-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: rgba(10, 8, 16, 0.35);
+  }
+  
+  .affinity-group[data-group="favorable"] {
+    border-left: 3px solid var(--ready-hi);
+  }
+  
+  .affinity-group[data-group="unfavorable"] {
+    border-left: 3px solid var(--danger-hi);
+  }
+  
+  .affinity-group__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  
+  .affinity-group__title {
+    font-family: var(--font-display);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-1);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  
+  .affinity-group__title em {
+    font-family: var(--font-body);
+    font-size: 0.68rem;
+    font-style: italic;
+    color: var(--ink-3);
+    letter-spacing: 0.02em;
+    text-transform: none;
+  }
+  
+  .affinity-group__icon {
+    font-size: 0.85rem;
+    line-height: 1;
+  }
+  .affinity-group__icon--fav { color: var(--ready-hi); }
+  .affinity-group__icon--unfav { color: var(--danger-hi); }
+  
+  .affinity-group__clear {
+    padding: 3px 10px;
+    font-family: var(--font-display);
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .affinity-group__clear:hover {
+    color: var(--danger-hi);
+    border-color: var(--danger-hi);
+    background: rgba(200, 68, 58, 0.1);
+  }
+  
+  /* Contenedor flex-wrap de chips */
+  .affinity-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  
+  /* Chip individual toggleable */
+  .affinity-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 12px;
+    font-family: var(--font-display);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    background: rgba(10, 8, 16, 0.65);
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+  }
+  
+  .affinity-chip:hover {
+    border-color: var(--gold-1);
+    color: var(--ink-0);
+    transform: translateY(-1px);
+  }
+  
+  /* Chip marcado (favorecida) */
+  .affinity-group[data-group="favorable"] .affinity-chip.is-selected {
+    color: #0b1a10;
+    background: linear-gradient(180deg, var(--ready-hi), var(--ready));
+    border-color: #e6ffe9;
+    box-shadow: 0 0 12px rgba(79, 174, 106, 0.7), 0 0 22px rgba(79, 174, 106, 0.35);
+    text-shadow: 0 1px 1px rgba(255, 255, 255, 0.4);
+  }
+  
+  /* Chip marcado (perjudicada) */
+  .affinity-group[data-group="unfavorable"] .affinity-chip.is-selected {
+    color: #fff;
+    background: linear-gradient(180deg, var(--danger-hi), var(--danger));
+    border-color: #ffd9d3;
+    box-shadow: 0 0 12px rgba(200, 68, 58, 0.7), 0 0 22px rgba(200, 68, 58, 0.35);
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
+  }
+  
+  .affinity-chip:focus-visible {
+    outline: 2px solid var(--gold-1);
+    outline-offset: 2px;
+  }
+  
+  /* ============================================================
+     TARJETA DE ESCENARIO — CHIPS MÚLTIPLES
+     ============================================================ */
+  .stage-card__mods {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+  }
+  
+  .stage-card__mod {
+    padding: 2px 8px;
+    font-family: var(--font-display);
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border-radius: 999px;
+    white-space: nowrap;
+    line-height: 1.4;
+  }
+  
+  .stage-card__mod--favored {
+    color: #0b1a10;
+    background: linear-gradient(180deg, #6cd18a, #3a8a50);
+    border: 1px solid #a3e8b8;
+  }
+  
+  .stage-card__mod--penalized {
+    color: #fff;
+    background: linear-gradient(180deg, #c8443a, #7a1e16);
+    border: 1px solid #ffb3a1;
+  }
+
   /* ===== UTILIDADES ===== */
   [hidden] { display: none !important; }
