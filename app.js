@@ -356,25 +356,24 @@
      MÓDULO 4 — ELEGIBLES PARA LA RULETA
      ========================================================= */
      function getEligibleStands() {
+      // Requiem NUNCA elegible para la ruleta
+      const basePool = roster.filter((s) => !s.isRequiem);
+  
       if (currentMode !== 'royale') {
-        // Modo libre: todos siempre
-        return roster.slice();
+        return basePool.slice();
       }
   
       if (tournamentPhase === PHASE.WAITING) {
-        // Fase 1: solo los que aún no han peleado ni han sido retirados
-        return roster.filter((s) => {
+        return basePool.filter((s) => {
           const state = s.tournamentState || (s.isDefeated ? STAND_STATE.RETIRED : STAND_STATE.WAITING);
           return state === STAND_STATE.WAITING;
         });
       }
   
       if (tournamentPhase === PHASE.WINNERS) {
-        // Fase 2: solo los ganadores
-        return roster.filter((s) => (s.tournamentState === STAND_STATE.WINNER));
+        return basePool.filter((s) => s.tournamentState === STAND_STATE.WINNER);
       }
   
-      // Fase 3: no hay elegibles, ya hay campeón
       return [];
     }
 
@@ -725,33 +724,80 @@
     /* =========================================================
        RENDERIZADO
        ========================================================= */
-    function renderCounter() {
-      participantsEl.textContent = `Participantes: ${roster.length} / ${MAX_PARTICIPANTS}`;
-    }
+       function renderCounter() {
+        const baseCount = roster.filter((s) => !s.isRequiem).length;
+        participantsEl.textContent = `Participantes: ${baseCount} / ${MAX_PARTICIPANTS}`;
+      }
   
     function renderGallery() {
       if (!gallery) return;
   
-      if (roster.length === 0) {
+      const baseStands = roster.filter((s) => !s.isRequiem);
+      const requiemStands = roster.filter((s) => s.isRequiem);
+  
+      // --- Galería principal ---
+      if (baseStands.length === 0) {
         gallery.innerHTML = '';
         emptyState.hidden = false;
-        return;
-      }
-      emptyState.hidden = true;
-  
-      const frag = document.createDocumentFragment();
-  
-      for (const stand of roster) {
-        frag.appendChild(buildCard(stand));
+      } else {
+        emptyState.hidden = true;
+        const frag = document.createDocumentFragment();
+        for (const stand of baseStands) frag.appendChild(buildCard(stand));
+        gallery.innerHTML = '';
+        gallery.appendChild(frag);
       }
   
-      gallery.innerHTML = '';
-      gallery.appendChild(frag);
+      // --- Galería Requiem ---
+      const requiemSection = document.getElementById('requiemSection');
+      const requiemGallery = document.getElementById('requiemGallery');
+  
+      if (requiemSection && requiemGallery) {
+        if (requiemStands.length === 0) {
+          requiemSection.hidden = true;
+          requiemGallery.innerHTML = '';
+        } else {
+          requiemSection.hidden = false;
+          const frag = document.createDocumentFragment();
+          for (const stand of requiemStands) frag.appendChild(buildCard(stand));
+          requiemGallery.innerHTML = '';
+          requiemGallery.appendChild(frag);
+        }
+      }
+  
+      // Refrescar el contador (solo base)
+      renderCounter();
     }
   
     function buildCard(stand) {
       const card = document.createElement('article');
-      card.className = 'stand-card';
+      const state = stand.tournamentState || (stand.isDefeated ? STAND_STATE.RETIRED : STAND_STATE.WAITING);
+  
+      let stateBadge = '';
+      let extraClass = '';
+      if (stand.isRequiem) extraClass += ' is-requiem';
+  
+      if (currentMode === 'royale' && !stand.isRequiem) {
+        if (state === STAND_STATE.RETIRED) {
+          stateBadge = '<span class="stand-card__retired">RETIRED</span>';
+          extraClass += ' is-defeated';
+        } else if (state === STAND_STATE.WINNER) {
+          stateBadge = '<span class="stand-card__winner">WINNER</span>';
+          extraClass += ' is-winner';
+        } else {
+          stateBadge = '<span class="stand-card__waiting">WAITING</span>';
+        }
+      }
+  
+      // Badge Requiem si el stand base tiene una forma vinculada
+      let requiemBadge = '';
+      if (!stand.isRequiem && stand.requiemStandId) {
+        const target = roster.find((r) => r.id === stand.requiemStandId);
+        if (target && target.isRequiem) {
+          requiemBadge = '<span class="stand-card__requiem-badge">✧ REQUIEM</span>';
+        }
+      }
+  
+      card.className = 'stand-card' + extraClass;
       card.dataset.id = stand.id;
   
       const imgSrc = stand.image || '';
@@ -759,37 +805,15 @@
         ? `<img class="stand-card__image" src="${escapeHtml(imgSrc)}" alt="${escapeHtml(stand.standName)}">`
         : `<div class="stand-card__image stand-card__image--empty">🂠</div>`;
   
-        const radarMarkup = `
-        <div class="radar-chart radar-chart--card" data-radar-for="${escapeHtml(stand.id)}"></div>
-      `;
-  
       const hp = computeHP(stand.stats.durability, stand.level || DEFAULT_LEVEL);
       const cry = stand.battleCry
         ? `<p class="stand-card__cry">“${escapeHtml(stand.battleCry)}”</p>`
         : '';
   
-        const state = stand.tournamentState || (stand.isDefeated ? STAND_STATE.RETIRED : STAND_STATE.WAITING);
-
-    let stateBadge = '';
-    let extraClass = '';
-
-    if (state === STAND_STATE.RETIRED) {
-      stateBadge = '<span class="stand-card__retired">RETIRED</span>';
-      extraClass = ' is-defeated';
-    } else if (state === STAND_STATE.WINNER) {
-      stateBadge = '<span class="stand-card__winner">WINNER</span>';
-      extraClass = ' is-winner';
-    } else if (currentMode === 'royale') {
-      stateBadge = '<span class="stand-card__waiting">WAITING</span>';
-    }
-
-    card.className = 'stand-card' + extraClass;
-    card.dataset.id = stand.id;
-
-    
       card.innerHTML = `
         <div class="stand-card__frame">
           ${stateBadge}
+          ${requiemBadge}
           <span class="stand-card__affinity">${escapeHtml(stand.affinity)}</span>
           <span class="stand-card__hp">${hp}</span>
           ${imgMarkup}
@@ -798,19 +822,19 @@
           <p class="stand-card__owner">${escapeHtml(stand.artistName)}</p>
           <h3 class="stand-card__name">${escapeHtml(stand.standName)}</h3>
           ${cry}
-          ${radarMarkup}
+          <div class="radar-chart radar-chart--card" data-radar-for="${escapeHtml(stand.id)}"></div>
           <div class="stand-card__actions">
             <button type="button" class="btn btn--ghost" data-action="edit">✎ Editar</button>
             <button type="button" class="btn btn--danger" data-action="delete">✕ Eliminar</button>
           </div>
         </div>
       `;
-
-          // Inyectar el radar SVG (necesita estar en el DOM antes)
-    const radarSlot = card.querySelector(`[data-radar-for="${stand.id}"]`);
-    if (radarSlot) {
-      renderRadarInto(radarSlot, stand.stats, { size: 100, compact: true });
-    }
+  
+      // Radar SVG
+      const radarSlot = card.querySelector(`[data-radar-for="${stand.id}"]`);
+      if (radarSlot) {
+        renderRadarInto(radarSlot, stand.stats, { size: 100, compact: true });
+      }
   
       card.querySelector('[data-action="edit"]').addEventListener('click', () => openModal(stand.id));
       card.querySelector('[data-action="delete"]').addEventListener('click', () => deleteStand(stand.id));
@@ -884,14 +908,11 @@
         updatePreview();
         updateDerived();
     
-        // Reset stats por defecto a B
         $$('.field--stat select').forEach((sel) => { sel.value = 'B'; });
     
-        // Reset afinidad personalizada
         if (customAffinityField) customAffinityField.hidden = true;
         if (customAffinityInput) customAffinityInput.value = '';
     
-        // Reset de TODOS los bloques de habilidad (1-5)
         $$('.ability-block').forEach((block, i) => {
           const nameEl = block.querySelector('.ability-name');
           const dmgEl  = block.querySelector('.ability-damage');
@@ -913,63 +934,102 @@
     
           if (i >= 3) block.classList.add('is-empty');
         });
+    
+        // Requiem
+        const isRequiemEl = document.getElementById('standIsRequiem');
+        const requiemField = document.getElementById('standRequiemTargetField');
+        if (isRequiemEl) isRequiemEl.checked = false;
+        populateRequiemTargetSelect('');
+        if (requiemField) requiemField.hidden = false;
       }
-  
-    function fillForm(stand) {
-      artistNameInput.value = stand.artistName || '';
-      standNameInput.value = stand.standName || '';
-      battleCryInput.value = stand.battleCry || '';
-  
-      // Afinidad base o personalizada
-      if (BASE_AFFINITIES.includes(stand.affinity)) {
-        affinitySelect.value = stand.affinity;
-        if (customAffinityField) customAffinityField.hidden = true;
-        if (customAffinityInput) customAffinityInput.value = '';
-      } else if (stand.affinity) {
-        affinitySelect.value = '__custom__';
-        if (customAffinityField) customAffinityField.hidden = false;
-        if (customAffinityInput) customAffinityInput.value = stand.affinity;
-      } else {
-        affinitySelect.value = 'Físico';
-        if (customAffinityField) customAffinityField.hidden = true;
-      }
-  
-      STAT_KEYS.forEach((k) => {
-        const sel = $(`.field--stat select[data-stat="${k}"]`);
-        if (sel) sel.value = stand.stats[k] || 'B';
-      });
-  
-      const blocks = $$('.ability-block');
-      for (let i = 0; i < MAX_ABILITIES; i++) {
-        const block = blocks[i];
-        if (!block) continue;
-  
-        const ab = (stand.abilities && stand.abilities[i]) || {};
-        const nameEl = block.querySelector('.ability-name');
-        const dmgEl  = block.querySelector('.ability-damage');
-        const cdEl   = block.querySelector('.ability-cooldown');
-        const descEl = block.querySelector('.ability-desc');
-        const accEl  = block.querySelector('.ability-accuracy');
-  
-        if (nameEl) nameEl.value = ab.name || '';
-        if (dmgEl)  dmgEl.value  = ab.damage ?? 30;
-        if (cdEl)   cdEl.value   = ab.cooldown ?? 1;
-        if (descEl) descEl.value = ab.description || '';
-        if (accEl)  accEl.value  = ab.accuracy ?? 100;
-  
-        const typeRadios = block.querySelectorAll('.ability-type');
-        const savedType = ab.type || 'damage';
-        typeRadios.forEach((r) => {
-          r.checked = (r.value === savedType);
-          r.closest('.type-pill')?.classList.toggle('is-checked', r.checked);
-        });
-  
-        // Marcar visualmente si el slot opcional está vacío
-        if (i >= 3) {
-          block.classList.toggle('is-empty', !ab.name);
-        }
-      }
+        /* =========================================================
+     POBLAR SELECTOR DE VÍNCULO REQUIEM
+     Lista solo stands base (no requiem) del roster, excluyendo
+     el stand que se está editando actualmente.
+     ========================================================= */
+  function populateRequiemTargetSelect(selectedId = '') {
+    const sel = document.getElementById('standRequiemTarget');
+    if (!sel) return;
+
+    const currentEditId = editingId;
+    const candidates = roster.filter((s) => s.isRequiem && s.id !== currentEditId);
+
+    sel.innerHTML = '<option value="">— Ninguna —</option>';
+    for (const s of candidates) {
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = `${s.standName} (${s.artistName})`;
+      sel.appendChild(opt);
     }
+
+    if (selectedId && candidates.some((c) => c.id === selectedId)) {
+      sel.value = selectedId;
+    }
+  }
+  
+      function fillForm(stand) {
+        artistNameInput.value = stand.artistName || '';
+        standNameInput.value = stand.standName || '';
+        battleCryInput.value = stand.battleCry || '';
+    
+        // Afinidad
+        if (BASE_AFFINITIES.includes(stand.affinity)) {
+          affinitySelect.value = stand.affinity;
+          if (customAffinityField) customAffinityField.hidden = true;
+          if (customAffinityInput) customAffinityInput.value = '';
+        } else if (stand.affinity) {
+          affinitySelect.value = '__custom__';
+          if (customAffinityField) customAffinityField.hidden = false;
+          if (customAffinityInput) customAffinityInput.value = stand.affinity;
+        } else {
+          affinitySelect.value = 'Físico';
+          if (customAffinityField) customAffinityField.hidden = true;
+        }
+    
+        // Stats
+        STAT_KEYS.forEach((k) => {
+          const sel = $(`.field--stat select[data-stat="${k}"]`);
+          if (sel) sel.value = stand.stats[k] || 'B';
+        });
+    
+        // Habilidades
+        const blocks = $$('.ability-block');
+        for (let i = 0; i < MAX_ABILITIES; i++) {
+          const block = blocks[i];
+          if (!block) continue;
+          const ab = (stand.abilities && stand.abilities[i]) || {};
+    
+          const nameEl = block.querySelector('.ability-name');
+          const dmgEl  = block.querySelector('.ability-damage');
+          const cdEl   = block.querySelector('.ability-cooldown');
+          const descEl = block.querySelector('.ability-desc');
+          const accEl  = block.querySelector('.ability-accuracy');
+    
+          if (nameEl) nameEl.value = ab.name || '';
+          if (dmgEl)  dmgEl.value  = ab.damage ?? 30;
+          if (cdEl)   cdEl.value   = ab.cooldown ?? 1;
+          if (descEl) descEl.value = ab.description || '';
+          if (accEl)  accEl.value  = ab.accuracy ?? 100;
+    
+          const typeRadios = block.querySelectorAll('.ability-type');
+          const savedType = ab.type || 'damage';
+          typeRadios.forEach((r) => {
+            r.checked = (r.value === savedType);
+            r.closest('.type-pill')?.classList.toggle('is-checked', r.checked);
+          });
+    
+          if (i >= 3) block.classList.toggle('is-empty', !ab.name);
+        }
+    
+        // --- Requiem ---
+        const isRequiemEl = document.getElementById('standIsRequiem');
+        const requiemTargetEl = document.getElementById('standRequiemTarget');
+        const requiemField = document.getElementById('standRequiemTargetField');
+    
+        if (isRequiemEl) isRequiemEl.checked = !!stand.isRequiem;
+        populateRequiemTargetSelect(stand.requiemStandId || '');
+        if (requiemField) requiemField.hidden = !!stand.isRequiem;
+      }
   
     function collectForm() {
       const stats = {};
@@ -980,9 +1040,8 @@
   
       const abilities = $$('.ability-block').map((block) => {
         const checkedType = block.querySelector('.ability-type:checked');
-        const name = (block.querySelector('.ability-name')?.value || '').trim();
         return {
-          name,
+          name: (block.querySelector('.ability-name')?.value || '').trim(),
           damage: clampNumber(block.querySelector('.ability-damage')?.value, 15, 60, 30),
           cooldown: clampNumber(block.querySelector('.ability-cooldown')?.value, 0, 5, 1),
           accuracy: clampNumber(block.querySelector('.ability-accuracy')?.value, 10, 100, 100),
@@ -991,8 +1050,15 @@
         };
       });
   
-      // Filtrar: solo habilidades con nombre (permite slots vacíos opcionales)
       const activeAbilities = abilities.filter((ab) => ab.name.length > 0);
+  
+      const isRequiemEl = document.getElementById('standIsRequiem');
+      const requiemTargetEl = document.getElementById('standRequiemTarget');
+  
+      const isRequiem = isRequiemEl ? isRequiemEl.checked : false;
+      const requiemStandId = (!isRequiem && requiemTargetEl && requiemTargetEl.value)
+        ? requiemTargetEl.value
+        : null;
   
       return {
         artistName: artistNameInput.value.trim(),
@@ -1000,21 +1066,105 @@
         affinity: resolveAffinityFromForm(),
         battleCry: battleCryInput.value.trim(),
         stats,
-        abilities: activeAbilities
+        abilities: activeAbilities,
+        isRequiem,
+        requiemStandId
       };
     }
   
     /* =========================================================
        IMAGEN — CODIFICACIÓN BASE64
        ========================================================= */
-    function readImageAsBase64(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve({ dataUrl: reader.result, mime: file.type });
-        reader.onerror = () => reject(reader.error || new Error('Error leyendo archivo'));
-        reader.readAsDataURL(file);
-      });
-    }
+      /* =========================================================
+     COMPRESIÓN AUTOMÁTICA DE IMÁGENES
+     ------------------------------------------------------------
+     - Redimensiona a un máximo de 450px (lado mayor)
+     - Exporta a WebP 0.82 si el navegador lo soporta (mantiene
+       transparencia). Fallback a JPEG 0.82 si WebP falla.
+     - Devuelve { dataUrl, mime } listo para guardar en el Stand.
+     ========================================================= */
+  const IMAGE_MAX_DIMENSION = 450;
+  const IMAGE_QUALITY = 0.82;
+
+  function compressImageFile(file) {
+    return new Promise((resolve, reject) => {
+      if (!file || !/^image\//.test(file.type)) {
+        reject(new Error('El archivo no es una imagen válida.'));
+        return;
+      }
+
+      const reader = new FileReader();
+
+      reader.onerror = () => reject(reader.error || new Error('Error leyendo el archivo.'));
+
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error('No se pudo decodificar la imagen.'));
+        img.onload = () => {
+          try {
+            // 1) Calcular dimensiones proporcionales
+            let { width, height } = img;
+            const maxSide = Math.max(width, height);
+
+            if (maxSide > IMAGE_MAX_DIMENSION) {
+              const scale = IMAGE_MAX_DIMENSION / maxSide;
+              width = Math.round(width * scale);
+              height = Math.round(height * scale);
+            }
+
+            // 2) Dibujar en canvas off-screen
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+
+            const ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.clearRect(0, 0, width, height);
+            ctx.drawImage(img, 0, 0, width, height);
+
+            // 3) Intentar WebP primero (preserva transparencia)
+            let dataUrl = canvas.toDataURL('image/webp', IMAGE_QUALITY);
+            let mime = 'image/webp';
+
+            // Detección de fallback: si el navegador no soporta WebP,
+            // toDataURL devuelve 'data:image/png;base64,...' como fallback silencioso.
+            if (!dataUrl.startsWith('data:image/webp')) {
+              dataUrl = canvas.toDataURL('image/jpeg', IMAGE_QUALITY);
+              mime = 'image/jpeg';
+            }
+
+            // 4) Seguridad extra: si el resultado aún es enorme (>600 KB), recomprimir más agresivo
+            const approxBytes = Math.round((dataUrl.length - dataUrl.indexOf(',') - 1) * 0.75);
+            if (approxBytes > 600 * 1024) {
+              dataUrl = canvas.toDataURL('image/webp', 0.65);
+              mime = 'image/webp';
+              if (!dataUrl.startsWith('data:image/webp')) {
+                dataUrl = canvas.toDataURL('image/jpeg', 0.65);
+                mime = 'image/jpeg';
+              }
+            }
+
+            resolve({ dataUrl, mime, width, height, bytes: approxBytes });
+          } catch (err) {
+            reject(err);
+          }
+        };
+        img.src = reader.result;
+      };
+
+      reader.readAsDataURL(file);
+    });
+  }
+
+  /* =========================================================
+     WRAPPER LEGACY: mantiene la firma original usada por el
+     modal individual y el modal dual ({ dataUrl, mime }).
+     ========================================================= */
+  async function readImageAsBase64(file) {
+    const result = await compressImageFile(file);
+    return { dataUrl: result.dataUrl, mime: result.mime };
+  }
   
     function updatePreview() {
       if (pendingImageBase64) {
@@ -1047,51 +1197,55 @@
     /* =========================================================
        CRUD
        ========================================================= */
-    function upsertStand(data) {
-      const payload = {
-        isDefeated: false,
-        defeatedAt: null,
-        lastHp: null,
-        tournamentDamage: 0,
-        tournamentBattles: 0,
-        id: editingId || uid(),
-        artistName: data.artistName,
-        standName: data.standName,
-        affinity: data.affinity,
-        battleCry: data.battleCry,
-        stats: data.stats,
-        abilities: data.abilities,
-        image: pendingImageBase64 || null,
-        imageMime: pendingImageMime || null,
-        level: DEFAULT_LEVEL,
-        createdAt: editingId
-          ? (roster.find((s) => s.id === editingId)?.createdAt || Date.now())
-          : Date.now(),
-        updatedAt: Date.now()
-      };
-  
-      if (editingId) {
-        const idx = roster.findIndex((s) => s.id === editingId);
-        if (idx >= 0) {
-          const existing = roster[idx];
-          roster[idx] = {
-            ...existing,
-            ...payload,
-            isDefeated: existing.isDefeated,
-            defeatedAt: existing.defeatedAt,
-            lastHp: existing.lastHp,
-            tournamentDamage: existing.tournamentDamage,
-            tournamentBattles: existing.tournamentBattles || 0
-          };
+       function upsertStand(data) {
+        const payload = {
+          id: editingId || uid(),
+          artistName: data.artistName,
+          standName: data.standName,
+          affinity: data.affinity,
+          battleCry: data.battleCry,
+          stats: data.stats,
+          abilities: data.abilities,
+          image: pendingImageBase64 || null,
+          imageMime: pendingImageMime || null,
+          level: DEFAULT_LEVEL,
+          isDefeated: false,
+          defeatedAt: null,
+          lastHp: null,
+          tournamentDamage: 0,
+          tournamentBattles: 0,
+          tournamentState: STAND_STATE.WAITING,
+          isRequiem: !!data.isRequiem,
+          requiemStandId: data.isRequiem ? null : (data.requiemStandId || null),
+          createdAt: editingId
+            ? (roster.find((s) => s.id === editingId)?.createdAt || Date.now())
+            : Date.now(),
+          updatedAt: Date.now()
+        };
+    
+        if (editingId) {
+          const idx = roster.findIndex((s) => s.id === editingId);
+          if (idx >= 0) {
+            const existing = roster[idx];
+            roster[idx] = {
+              ...existing,
+              ...payload,
+              isDefeated: existing.isDefeated,
+              defeatedAt: existing.defeatedAt,
+              lastHp: existing.lastHp,
+              tournamentDamage: existing.tournamentDamage,
+              tournamentBattles: existing.tournamentBattles || 0,
+              tournamentState: existing.tournamentState || STAND_STATE.WAITING
+            };
+          }
+        } else {
+          roster.push(payload);
         }
-      } else {
-        roster.push(payload);
+    
+        saveRoster();
+        renderCounter();
+        renderGallery();
       }
-  
-      saveRoster();
-      renderCounter();
-      renderGallery();
-    }
   
     function deleteStand(id) {
       const stand = roster.find((s) => s.id === id);
@@ -1217,7 +1371,6 @@
           }))
         : [];
   
-      // Aseguramos al menos 1 habilidad con nombre (nunca 0)
       const activeAbilities = abilities.filter((a) => a.name.length > 0);
       while (activeAbilities.length < MIN_ABILITIES) {
         activeAbilities.push({ name: 'Ataque Básico', damage: 30, cooldown: 0, accuracy: 100, description: '', type: 'damage' });
@@ -1242,6 +1395,10 @@
         tournamentState: ['waiting', 'winner', 'retired'].includes(raw.tournamentState)
           ? raw.tournamentState
           : (raw.isDefeated ? STAND_STATE.RETIRED : STAND_STATE.WAITING),
+        isRequiem: Boolean(raw.isRequiem),
+        requiemStandId: (!raw.isRequiem && typeof raw.requiemStandId === 'string')
+          ? raw.requiemStandId
+          : null,
         createdAt: Number(raw.createdAt) || Date.now(),
         updatedAt: Date.now()
       };
@@ -1562,6 +1719,18 @@
        EVENTOS
        ========================================================= */
     function bindEvents() {
+          // Toggle Requiem
+    const isRequiemEl = document.getElementById('standIsRequiem');
+    const requiemField = document.getElementById('standRequiemTargetField');
+    if (isRequiemEl && requiemField) {
+      isRequiemEl.addEventListener('change', () => {
+        requiemField.hidden = isRequiemEl.checked;
+        if (isRequiemEl.checked) {
+          const sel = document.getElementById('standRequiemTarget');
+          if (sel) sel.value = '';
+        }
+      });
+    }
           // Sincronizar clases .is-checked en las píldoras de tipo
     document.addEventListener('change', (e) => {
       if (e.target && e.target.classList.contains('ability-type')) {
@@ -2542,82 +2711,50 @@
          MÓDULO 3 — RENDER UI
          ========================================================= */
          function renderBattleUI() {
-            if (!battle) return;
-        
-            const { p1, p2, activeSide, finished } = battle;
-        
-            // P1
-            battleNameP1.textContent = p1.data.standName;
-            battleOwnerP1.textContent = p1.data.artistName;
-            battleAffP1.textContent = p1.data.affinity;
-            setSprite(battleSpriteP1, spriteFallbackP1, p1.data.image, p1.data.standName);
-        
-            // P2
-            battleNameP2.textContent = p2.data.standName;
-            battleOwnerP2.textContent = p2.data.artistName;
-            battleAffP2.textContent = p2.data.affinity;
-            setSprite(battleSpriteP2, spriteFallbackP2, p2.data.image, p2.data.standName);
-              // Radar charts en la arena
-              if (radarP1) renderRadarInto(radarP1, battle.p1.data.stats, { size: 140, compact: true, withBackground: true });
-              if (radarP2) renderRadarInto(radarP2, battle.p2.data.stats, { size: 140, compact: true, withBackground: true });
-            // Limpiar estados previos
-            fighterP1.classList.remove('is-active', 'is-waiting', 'is-defeated');
-            fighterP2.classList.remove('is-active', 'is-waiting', 'is-defeated');
-            // Refrescar indicador de escudo
-            fighterP1.classList.toggle('has-shield', !!battle.p1.shield);
-            fighterP2.classList.toggle('has-shield', !!battle.p2.shield);
-        
-            // Marcar derrotado (si aplica)
-            if (p1.hp <= 0) fighterP1.classList.add('is-defeated');
-            if (p2.hp <= 0) fighterP2.classList.add('is-defeated');
-        
-            // Si no ha terminado, marcar activo / en espera
-            if (!finished) {
-              if (activeSide === 'p1') {
-                if (p1.hp > 0) fighterP1.classList.add('is-active');
-                if (p2.hp > 0) fighterP2.classList.add('is-waiting');
-              } else {
-                if (p2.hp > 0) fighterP2.classList.add('is-active');
-                if (p1.hp > 0) fighterP1.classList.add('is-waiting');
-              }
+          if (!battle) return;
+      
+          const { p1, p2, activeSide, finished } = battle;
+      
+          battleNameP1.textContent = p1.data.standName;
+          battleOwnerP1.textContent = p1.data.artistName;
+          battleAffP1.textContent = p1.data.affinity;
+          setSprite(battleSpriteP1, spriteFallbackP1, p1.data.image, p1.data.standName);
+      
+          battleNameP2.textContent = p2.data.standName;
+          battleOwnerP2.textContent = p2.data.artistName;
+          battleAffP2.textContent = p2.data.affinity;
+          setSprite(battleSpriteP2, spriteFallbackP2, p2.data.image, p2.data.standName);
+      
+          fighterP1.classList.remove('is-active', 'is-waiting', 'is-defeated');
+          fighterP2.classList.remove('is-active', 'is-waiting', 'is-defeated');
+      
+          if (p1.hp <= 0) fighterP1.classList.add('is-defeated');
+          if (p2.hp <= 0) fighterP2.classList.add('is-defeated');
+      
+          if (!finished) {
+            if (activeSide === 'p1') {
+              if (p1.hp > 0) fighterP1.classList.add('is-active');
+              if (p2.hp > 0) fighterP2.classList.add('is-waiting');
+            } else {
+              if (p2.hp > 0) fighterP2.classList.add('is-active');
+              if (p1.hp > 0) fighterP1.classList.add('is-waiting');
             }
-
-                // --- Terrain tags (bonus/penalización) ---
-    const updateTerrainTag = (fighterEl, fighter) => {
-      // Limpiar tag previo
-      const prev = fighterEl.querySelector('.battle-fighter__terrain-tag');
-      if (prev) prev.remove();
-
-      if (!battle.stage) return;
-
-      const favored = (fighter.terrainBoost > 0) || (battle.stage.affinity === fighter.data.affinity);
-      const penalized = battle.stage.penalizedAffinity && battle.stage.penalizedAffinity === fighter.data.affinity;
-
-      if (favored) {
-        const tag = document.createElement('span');
-        tag.className = 'battle-fighter__terrain-tag battle-fighter__terrain-tag--bonus';
-        tag.textContent = `▲ +${fighter.terrainBoost > 0 ? 30 : 15}% Terreno`;
-        fighterEl.appendChild(tag);
-      } else if (penalized) {
-        const tag = document.createElement('span');
-        tag.className = 'battle-fighter__terrain-tag battle-fighter__terrain-tag--penalty';
-        tag.textContent = '▼ −15% Terreno';
-        fighterEl.appendChild(tag);
-      }
-    };
-
-    updateTerrainTag(fighterP1, battle.p1);
-    updateTerrainTag(fighterP2, battle.p2);
-        
-            // Indicador de turno
-            battleTurnIndicator.textContent = finished
-              ? 'Combate Finalizado'
-              : `Turno ${battle.turn} · ${activeSide === 'p1' ? 'P1' : 'P2'}`;
-            battleRoundDisplay.textContent = `Ronda ${toRoman(battle.round)}`;
-        
-            // Status chips (bonus de terreno)
-            updateStatusChips();
           }
+      
+          fighterP1.classList.toggle('has-shield', !!battle.p1.shield);
+          fighterP2.classList.toggle('has-shield', !!battle.p2.shield);
+      
+          // Radar charts
+          if (radarP1) renderRadarInto(radarP1, battle.p1.data.stats, { size: 140, compact: true, withBackground: true });
+          if (radarP2) renderRadarInto(radarP2, battle.p2.data.stats, { size: 140, compact: true, withBackground: true });
+      
+          battleTurnIndicator.textContent = finished
+            ? 'Combate Finalizado'
+            : `Turno ${battle.turn} · ${activeSide === 'p1' ? 'P1' : 'P2'}`;
+          battleRoundDisplay.textContent = `Ronda ${toRoman(battle.round)}`;
+      
+          updateStatusChips();
+        }
     
       function setSprite(imgEl, fallbackEl, src, alt) {
         if (src) {
@@ -3206,14 +3343,15 @@
          function updateActionPanel() {
           if (!battle) return;
       
-          // Ref al botón de stun (se crea dinámicamente la primera vez)
-          let btnStun = document.getElementById('btnSkipRivalTurn');
+          const btnStun = document.getElementById('btnSkipRivalTurn');
+          const btnRequiem = document.getElementById('btnTriggerRequiem');
       
           if (battle.finished) {
             turnLabel.textContent = 'Combate Finalizado';
             turnTimer.textContent = '';
             disableAllActions();
             if (btnStun) btnStun.disabled = true;
+            if (btnRequiem) btnRequiem.hidden = true;
             return;
           }
       
@@ -3222,7 +3360,7 @@
           turnLabel.textContent = `Turno de ${active.data.standName}`;
           turnTimer.textContent = `Ronda ${toRoman(battle.round)}`;
       
-          // ---------- ATAQUE BÁSICO ----------
+          // --- Ataque Básico ---
           const isBasicLocked = (battle.basicAttackLocked || 0) > 0;
       
           if (isBasicLocked) {
@@ -3252,27 +3390,23 @@
             }
           }
       
-          // ---------- HABILIDADES DINÁMICAS (1 a 5) ----------
+          // --- Habilidades dinámicas ---
           const skillBtns  = [skillBtn0, skillBtn1, skillBtn2, skillBtn3, skillBtn4];
           const skillNames = [skillName0, skillName1, skillName2, skillName3, skillName4];
           const skillMetas = [skillMeta0, skillMeta1, skillMeta2, skillMeta3, skillMeta4];
-      
           const abilities = active.data.abilities || [];
       
           skillBtns.forEach((btn, idx) => {
             if (!btn) return;
-      
             const ability = abilities[idx];
             const nameEl = skillNames[idx];
             const metaEl = skillMetas[idx];
       
-            // Slot sin habilidad → ocultar
             if (!ability || !ability.name) {
               btn.hidden = true;
               btn.disabled = true;
               return;
             }
-      
             btn.hidden = false;
             if (nameEl) nameEl.textContent = ability.name;
       
@@ -3326,7 +3460,6 @@
               if (badge) badge.remove();
             }
       
-            // Rebind handlers
             btn.onclick = () => performAction(battle.activeSide, 'skill', idx);
             btn.onmouseenter = () => showSkillTooltip(btn, ability, idx);
             btn.onmouseleave = () => hideSkillTooltip();
@@ -3341,28 +3474,107 @@
             }
           });
       
-          // Rebind del ataque básico
           btnBasicAttack.onclick = () => performAction(battle.activeSide, 'basic');
       
-          // ---------- BOTÓN "SALTAR TURNO RIVAL" (STUN) ----------
-          if (!btnStun) {
-            btnStun = document.createElement('button');
-            btnStun.type = 'button';
-            btnStun.id = 'btnSkipRivalTurn';
-            btnStun.className = 'action-btn action-btn--utility';
-            btnStun.innerHTML = `
+          // --- STUN ---
+          let btnStunRef = document.getElementById('btnSkipRivalTurn');
+          if (!btnStunRef) {
+            btnStunRef = document.createElement('button');
+            btnStunRef.type = 'button';
+            btnStunRef.id = 'btnSkipRivalTurn';
+            btnStunRef.className = 'action-btn action-btn--utility';
+            btnStunRef.innerHTML = `
               <span class="action-btn__icon">⏳</span>
               <span class="action-btn__name">Saltar Turno Rival</span>
               <span class="action-btn__meta">El rival pierde su próximo turno</span>
             `;
             const grid = document.querySelector('.battle-actions__grid');
-            if (grid) grid.appendChild(btnStun);
+            if (grid) grid.appendChild(btnStunRef);
           }
+          btnStunRef.disabled = !!battle.skipRivalPending;
+          btnStunRef.onclick = () => performSkipRivalTurn(battle.activeSide);
       
-          // Habilitar solo si no hay stun pendiente y el combate no está bloqueado
-          btnStun.disabled = !!battle.skipRivalPending;
-          btnStun.onclick = () => performSkipRivalTurn(battle.activeSide);
+          // --- DESPERTAR REQUIEM ---
+          if (btnRequiem) {
+            const activeSide = battle.activeSide;
+            const canAwaken =
+              !active.data.__isRequiemForm &&
+              !active.__requiemTriggered &&
+              active.data.requiemStandId &&
+              roster.some((s) => s.id === active.data.requiemStandId && s.isRequiem);
+      
+            btnRequiem.hidden = !canAwaken;
+            btnRequiem.onclick = () => triggerRequiem(activeSide);
+          }
         }
+          /* =========================================================
+     DESPERTAR REQUIEM
+     Transforma al combatiente activo en su Forma Requiem vinculada.
+     - Reemplaza datos del fighter en battle (sin tocar roster base)
+     - Restaura HP al del Requiem
+     - Registra en el log
+     - Se usa UNA sola vez por combate por bando
+     ========================================================= */
+  function triggerRequiem(side) {
+    if (!battle || battle.finished || battle.busy) return;
+
+    const fighter = battle[side];
+    if (!fighter) return;
+    if (fighter.__requiemTriggered) return;
+    if (!fighter.data.requiemStandId) return;
+
+    const requiemData = roster.find((s) => s.id === fighter.data.requiemStandId && s.isRequiem);
+    if (!requiemData) {
+      toast('La Forma Requiem vinculada no existe o fue eliminada.', 'error');
+      return;
+    }
+
+    battle.busy = true;
+
+    const oldName = fighter.data.standName;
+
+    // --- Reemplazar datos ---
+    fighter.data = {
+      ...requiemData,
+      // Conservamos afinidad, etc. tal cual del Requiem
+      __requiemOf: fighter.data.id
+    };
+
+    // HP: recalcular desde el Requiem
+    const newMaxHp = computeHP(requiemData.stats.durability, requiemData.level || DEFAULT_LEVEL);
+    fighter.maxHp = newMaxHp;
+    fighter.hp = newMaxHp;
+
+    // Reset cooldowns para que pueda usar sus habilidades Requiem
+    fighter.cooldowns = [0, 0, 0, 0, 0];
+
+    // Marcar para no volver a usarlo
+    fighter.__requiemTriggered = true;
+    fighter.__isRequiemForm = true;
+
+    // --- Efecto visual ---
+    const fighterEl = side === 'p1' ? fighterP1 : fighterP2;
+    fighterEl.classList.add('is-requiem-awakening');
+    setTimeout(() => fighterEl.classList.remove('is-requiem-awakening'), 1700);
+
+    // --- Log ---
+    pushLog({
+      side,
+      type: 'requiem',
+      html: `✧ <strong>${escapeHtml(oldName)}</strong> ha sido atravesado por la Flecha. ` +
+            `¡Despierta <strong>${escapeHtml(requiemData.standName)}</strong>!`
+    });
+
+    // --- Refrescar UI ---
+    renderBattleUI();
+    updateHpBar(side);
+    updateActionPanel();
+
+    // Pequeño beat dramático antes de devolver el control
+    setTimeout(() => {
+      battle.busy = false;
+    }, 900);
+  }
     
         function disableAllActions() {
           const allBtns = [btnBasicAttack, skillBtn0, skillBtn1, skillBtn2, skillBtn3, skillBtn4];

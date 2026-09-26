@@ -44,6 +44,10 @@
     <section class="gallery" id="gallery" aria-label="Galería de Stands">
       <!-- Las tarjetas se inyectan dinámicamente desde app.js -->
     </section>
+    <section id="requiemSection" class="requiem-section" hidden>
+      <h3 class="requiem-section__title">✧ FORMAS REQUIEM / EVOLUCIONES</h3>
+      <div id="requiemGallery" class="gallery"></div>
+    </section>
 
     <div class="empty-state" id="emptyState">
       <div class="empty-state__glyph">✧</div>
@@ -336,6 +340,12 @@
           <span class="battle-actions__timer" id="turnTimer"></span>
         </div>
 
+        <button type="button" class="action-btn action-btn--requiem" id="btnTriggerRequiem" hidden>
+          <span class="action-btn__icon">⚡</span>
+          <span class="action-btn__name">Despertar Requiem</span>
+          <span class="action-btn__meta">Invocar la evolución vinculada</span>
+        </button>
+
         <div class="battle-actions__grid">
           <button type="button" class="action-btn action-btn--basic" id="btnBasicAttack">
             <span class="action-btn__icon">⚔</span>
@@ -465,6 +475,22 @@
                            placeholder="Ej. Arena, Sombras, Sonido, Hilos…">
                     <span class="field__hint">Se guardará en tu lista de afinidades personalizadas.</span>
                   </label>
+                              <!-- Sistema Requiem -->
+            <div class="form__requiem-group">
+              <label class="field field--checkbox">
+                <input type="checkbox" id="standIsRequiem" name="standIsRequiem">
+                <span class="field__checkbox-label">✧ ¿Es una Forma Requiem?</span>
+                <span class="field__hint">Marca esta casilla si este Stand es una evolución Requiem.</span>
+              </label>
+
+              <label class="field" id="standRequiemTargetField">
+                <span class="field__label">Vincular a Forma Requiem</span>
+                <select id="standRequiemTarget">
+                  <option value="">— Ninguna —</option>
+                </select>
+                <span class="field__hint">Solo disponible si este Stand NO es una Forma Requiem.</span>
+              </label>
+            </div>
               </label>
 
               <label class="field">
@@ -706,17 +732,17 @@
                 <!-- Selector de tipo Habilidad IV -->
                 <div class="ability-type-pills" role="radiogroup" aria-label="Tipo de habilidad">
                   <label class="type-pill type-pill--damage">
-                    <input type="radio" class="ability-type" name="abilityType2" value="damage" checked>
+                    <input type="radio" class="ability-type" name="abilityType3" value="damage" checked>
                     <span class="type-pill__icon">⚔</span>
                     <span class="type-pill__label">Ataque</span>
                   </label>
                   <label class="type-pill type-pill--heal">
-                    <input type="radio" class="ability-type" name="abilityType2" value="heal">
+                    <input type="radio" class="ability-type" name="abilityType3" value="heal">
                     <span class="type-pill__icon">✚</span>
                     <span class="type-pill__label">Soporte</span>
                   </label>
                   <label class="type-pill type-pill--shield">
-                    <input type="radio" class="ability-type" name="abilityType2" value="shield">
+                    <input type="radio" class="ability-type" name="abilityType3" value="shield">
                     <span class="type-pill__icon">🛡</span>
                     <span class="type-pill__label">Escudo</span>
                   </label>
@@ -753,17 +779,17 @@
                 <!-- Selector de tipo Habilidad V -->
                 <div class="ability-type-pills" role="radiogroup" aria-label="Tipo de habilidad">
                   <label class="type-pill type-pill--damage">
-                    <input type="radio" class="ability-type" name="abilityType2" value="damage" checked>
+                    <input type="radio" class="ability-type" name="abilityType4" value="damage" checked>
                     <span class="type-pill__icon">⚔</span>
                     <span class="type-pill__label">Ataque</span>
                   </label>
                   <label class="type-pill type-pill--heal">
-                    <input type="radio" class="ability-type" name="abilityType2" value="heal">
+                    <input type="radio" class="ability-type" name="abilityType4" value="heal">
                     <span class="type-pill__icon">✚</span>
                     <span class="type-pill__label">Soporte</span>
                   </label>
                   <label class="type-pill type-pill--shield">
-                    <input type="radio" class="ability-type" name="abilityType2" value="shield">
+                    <input type="radio" class="ability-type" name="abilityType4" value="shield">
                     <span class="type-pill__icon">🛡</span>
                     <span class="type-pill__label">Escudo</span>
                   </label>
