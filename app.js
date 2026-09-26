@@ -544,6 +544,7 @@
   
       championBackdrop.hidden = false;
     }
+      
 
   function closeChampionModal() {
     championBackdrop.hidden = true;
@@ -810,18 +811,30 @@
       return Math.min(max, Math.max(min, Math.round(n)));
     }
   
-    /* =========================================================
-       CÁLCULOS DERIVADOS
-       ========================================================= */
-    function computeHP(durability, level = DEFAULT_LEVEL) {
-      // Escala por letra: A=5, B=4, C=3, D=2, E=1
-      const gradeScale = { A: 5, B: 4, C: 3, D: 2, E: 1 };
-      const lv = clampNumber(level, 1, 99, DEFAULT_LEVEL);
-      const factor = gradeScale[durability] || 3;
-      // Base 80 + (Nivel × 15) — el nivel efectivo se ajusta por durabilidad para dar
-      // variedad, pero se respeta la fórmula canónica sobre el nivel base.
-      return HP_BASE + (lv * HP_PER_LV) + ((factor - 3) * 5);
-    }
+      /* =========================================================
+     CÁLCULO DE HP — TABLA FIJA POR RANGO DE DURABILIDAD
+     A: 200 · B: 165 · C: 135 · D: 110 · E: 95
+     ========================================================= */
+  const HP_BY_DURABILITY = {
+    A: 200,
+    B: 165,
+    C: 135,
+    D: 110,
+    E: 95
+  };
+  const HP_DEFAULT = 135; // fallback si la DUR no es válida
+
+  function computeHP(durability, level = DEFAULT_LEVEL) {
+    const grade = String(durability || '').trim().toUpperCase();
+    const base = HP_BY_DURABILITY[grade] ?? HP_DEFAULT;
+
+    // El nivel añade un pequeño margen escalable sobre la base
+    // (por defecto DEFAULT_LEVEL=1 → +0, para no alterar la tabla solicitada)
+    const lv = clampNumber(level, 1, 99, DEFAULT_LEVEL);
+    const levelBonus = (lv - 1) * 5;
+
+    return base + levelBonus;
+  }
   
     function computeDamageBonus(power) {
       return DMG_BONUS[power] ?? 0;
@@ -4357,8 +4370,10 @@
        ============================ */
     if (role === 'heal') {
       if (effect === 'heal') {
-        const healPct = 0.22;
-        const rawHeal = Math.round(attacker.maxHp * healPct);
+        // El campo `damage` funciona como % de curación (ej. 15 = 15% del maxHp)
+        const customPct = Number(ability.damage) || Number(ability.power) || 20;
+        const rawHeal = Math.round(attacker.maxHp * (customPct / 100));
+
         const before = attacker.hp;
         attacker.hp = Math.min(attacker.maxHp, attacker.hp + rawHeal);
         const healed = attacker.hp - before;
@@ -4366,18 +4381,24 @@
         attackerEl.classList.add('is-healing');
         setTimeout(() => attackerEl.classList.remove('is-healing'), 1000);
 
-        const healFloat = document.createElement('div');
-        healFloat.className = 'damage-float damage-float--heal';
-        healFloat.textContent = `+${healed}`;
-        attackerEl.appendChild(healFloat);
-        setTimeout(() => healFloat.remove(), 1200);
+        if (healed > 0) {
+          const healFloat = document.createElement('div');
+          healFloat.className = 'damage-float damage-float--heal';
+          healFloat.textContent = `+${healed}`;
+          attackerEl.appendChild(healFloat);
+          setTimeout(() => healFloat.remove(), 1200);
+        }
 
         updateHpBar(attackerSide);
+
         pushLog({
           side: attackerSide,
           type: 'heal',
-          html: `<strong>${escapeHtml(attacker.data.standName)}</strong> usa <em>${escapeHtml(actionName)}</em> y recupera <span style="color:var(--ready-hi);font-weight:700;">+${healed}</span> HP.${cryText}`
+          html: `<strong>${escapeHtml(attacker.data.standName)}</strong> usa <em>${escapeHtml(actionName)}</em> ` +
+                `y recupera <span style="color:var(--ready-hi);font-weight:700;">+${healed}</span> HP ` +
+                `<span style="color:var(--ink-3);">(${customPct}% del máximo)</span>.${cryText}`
         });
+
         return { skipTurn: false };
       }
 
@@ -4793,54 +4814,79 @@
          MÓDULO 3 — MODAL DE VICTORIA
          ========================================================= */
          function showVictoryModal(winnerSide) {
-            if (!battle) return;
-            const winner = battle[winnerSide];
-            const loserSide = winnerSide === 'p1' ? 'p2' : 'p1';
-            const loser = battle[loserSide];
-        
-            // Marcar al perdedor como derrotado (solo Battle Royale)
-            markDefeated(loser.data.id);
-
-            // Marcar al ganador (solo Battle Royale)
-            markWinner(winner.data.id);
-
-            // Persistir el HP con el que sobrevivió el ganador
-            const winnerIdx = roster.findIndex((s) => s.id === winner.data.id);
-            if (winnerIdx >= 0) {
-              roster[winnerIdx].lastHp = winner.hp;
-            }
-            saveRoster();
-        
-            victoryKicker.textContent = `K.O. · ${loser.data.standName} derrotado`;
-            victoryTitle.textContent = '¡VICTORIA!';
-            victoryStandName.textContent = winner.data.standName;
-            victoryArtistName.textContent = `Artista: ${winner.data.artistName}`;
-        
-            if (winner.data.image) {
-              victoryPortrait.src = winner.data.image;
-              victoryPortrait.alt = winner.data.standName;
-              victoryPortrait.style.display = 'block';
-              victoryPortraitFallback.style.display = 'none';
-            } else {
-              victoryPortrait.removeAttribute('src');
-              victoryPortrait.style.display = 'none';
-              victoryPortraitFallback.style.display = 'grid';
-            }
-        
-            victoryHp.textContent = `${winner.hp} / ${winner.maxHp}`;
-            victoryTurns.textContent = String(battle.turn);
-            victoryDamage.textContent = String(winner.totalDamage);
-        
-            // Battle Royale: avanzar ronda y refrescar estado
-            if (currentMode === 'royale') {
-              tournamentRound++;
-              saveMode();
-              updateTournamentStatus();
-              renderGallery();
-            }
-        
-            victoryBackdrop.hidden = false;
+          if (!battle) return;
+          const winner = battle[winnerSide];
+          const loserSide = winnerSide === 'p1' ? 'p2' : 'p1';
+          const loser = battle[loserSide];
+      
+          // Marcar perdedor y ganador (solo Battle Royale)
+          markDefeated(loser.data.id);
+          markWinner(winner.data.id);
+      
+          // Persistir HP del ganador
+          const winnerIdx = roster.findIndex((s) => s.id === winner.data.id);
+          if (winnerIdx >= 0) {
+            roster[winnerIdx].lastHp = winner.hp;
           }
+          saveRoster();
+      
+          // Refrescar estado del torneo
+          if (currentMode === 'royale') {
+            tournamentRound++;
+            saveMode();
+            updateTournamentStatus();
+            renderGallery();
+            checkTournamentEnd();
+            updateTournamentStatus();
+            renderGallery();
+          }
+      
+          // =========================================================
+          // DETECCIÓN DE FIN DE TORNEO → MODAL DE CAMPEÓN
+          // =========================================================
+          if (currentMode === 'royale') {
+            const aliveBase = roster.filter((s) => !s.isRequiem && s.tournamentState !== STAND_STATE.RETIRED);
+            const allRetired = roster.every((s) => s.isRequiem || s.tournamentState === STAND_STATE.RETIRED);
+            const oneSurvivor = aliveBase.length === 1;
+      
+            if (allRetired || oneSurvivor) {
+              // Coronamos al ganador del último combate (o al único superviviente)
+              const champion = oneSurvivor ? aliveBase[0] : winner.data;
+      
+              // Actualizar fase a CHAMPION
+              tournamentPhase = PHASE.CHAMPION;
+              saveMode();
+      
+              // Abrir modal de campeón
+              closeVictoryModal();
+              openChampionModal(champion);
+              return;
+            }
+          }
+      
+          // Si no es fin de torneo, mostrar modal de victoria normal
+          victoryKicker.textContent = `K.O. · ${loser.data.standName} derrotado`;
+          victoryTitle.textContent = '¡VICTORIA!';
+          victoryStandName.textContent = winner.data.standName;
+          victoryArtistName.textContent = `Artista: ${winner.data.artistName}`;
+      
+          if (winner.data.image) {
+            victoryPortrait.src = winner.data.image;
+            victoryPortrait.alt = winner.data.standName;
+            victoryPortrait.style.display = 'block';
+            victoryPortraitFallback.style.display = 'none';
+          } else {
+            victoryPortrait.removeAttribute('src');
+            victoryPortrait.style.display = 'none';
+            victoryPortraitFallback.style.display = 'grid';
+          }
+      
+          victoryHp.textContent = `${winner.hp} / ${winner.maxHp}`;
+          victoryTurns.textContent = String(battle.turn);
+          victoryDamage.textContent = String(winner.totalDamage);
+      
+          victoryBackdrop.hidden = false;
+        }
               // Actualizar el estado del torneo (puede cambiar de fase)
             if (currentMode === 'royale') {
               tournamentRound++;
@@ -4855,6 +4901,59 @@
       function closeVictoryModal() {
         victoryBackdrop.hidden = true;
       }
+      /* =========================================================
+     APERTURA DEL MODAL DE CAMPEÓN
+     Acepta un Stand (objeto roster) o su id.
+     ========================================================= */
+  function openChampionModal(standOrId) {
+    let survivor = null;
+    if (typeof standOrId === 'string') {
+      survivor = roster.find((s) => s.id === standOrId) || null;
+    } else if (standOrId && typeof standOrId === 'object') {
+      // Si viene de battle (winner.data), re-buscamos en roster para datos frescos
+      survivor = roster.find((s) => s.id === standOrId.id) || standOrId;
+    }
+
+    if (!survivor) {
+      // Fallback: único no-retirado
+      survivor = roster.find((s) => !s.isRequiem && s.tournamentState !== STAND_STATE.RETIRED) || null;
+    }
+    if (!survivor) return;
+
+    // --- Rellenar campos del modal ---
+    championStandName.textContent = survivor.standName;
+    championArtistName.textContent = `Artista: ${survivor.artistName}`;
+
+    if (survivor.image) {
+      championPortrait.src = survivor.image;
+      championPortrait.alt = survivor.standName;
+      championPortrait.style.display = 'block';
+      championPortraitFallback.style.display = 'none';
+    } else {
+      championPortrait.removeAttribute('src');
+      championPortrait.style.display = 'none';
+      championPortraitFallback.style.display = 'grid';
+    }
+
+    // HP final: el guardado en lastHp o el máximo calculado
+    const maxHp = computeHP(survivor.stats.durability, survivor.level || DEFAULT_LEVEL);
+    const finalHp = (typeof survivor.lastHp === 'number' && survivor.lastHp >= 0)
+      ? survivor.lastHp
+      : maxHp;
+    championHp.textContent = `${finalHp} / ${maxHp}`;
+
+    // Daño total acumulado en el torneo
+    const totalDamage = Number(survivor.tournamentDamage) || 0;
+    championDamage.textContent = totalDamage > 0 ? String(totalDamage) : '0';
+
+    // Combates disputados
+    const battlesCount = Number(survivor.tournamentBattles) || 0;
+    championBattles.textContent = String(battlesCount);
+
+    // --- Abrir modal ---
+    championBackdrop.hidden = false;
+    document.body.style.overflow = 'hidden';
+  }
     
       /* =========================================================
          MÓDULO 3 — SALIDA / REVANCHA
