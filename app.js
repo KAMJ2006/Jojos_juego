@@ -817,12 +817,12 @@
      ========================================================= */
   const HP_BY_DURABILITY = {
     A: 200,
-    B: 165,
-    C: 135,
-    D: 110,
-    E: 95
+    B: 195,
+    C: 190,
+    D: 185,
+    E: 180
   };
-  const HP_DEFAULT = 135; // fallback si la DUR no es válida
+  const HP_DEFAULT = 190; // fallback si la DUR no es válida
 
   function computeHP(durability, level = DEFAULT_LEVEL) {
     const grade = String(durability || '').trim().toUpperCase();
