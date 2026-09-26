@@ -53,7 +53,16 @@
     const SPD_INITIATIVE = { A: 5, B: 4, C: 3, D: 2, E: 1 };
     const CRIT_CHANCE = { A: 0.30, B: 0.22, C: 0.15, D: 0.08, E: 0.03 };
     const BASIC_ATTACK_BASE = 15;
-    const PWR_BASIC_BONUS = { A: 18, B: 12, C: 8, D: 4, E: 0 };
+    const DAMAGE_BY_POWER = {
+      A: 20,
+      B: 17.5,
+      C: 15,
+      D: 12.5,
+      E: 10
+    };
+      // Mantenemos el alias por compatibilidad con otros módulos que aún lo usen
+    const PWR_BASIC_BONUS = DAMAGE_BY_POWER;
+    const BASE_DAMAGE_DEFAULT = 15;
     const HP_LOW_THRESHOLD = 0.30;
     const HP_MID_THRESHOLD = 0.60;
 
@@ -824,14 +833,7 @@
   }
 
   const HP_DEFAULT = 190; // fallback si la DUR no es válida
-  const DAMAGE_BY_POWER = {
-    A: 20,
-    B: 17.5,
-    C: 15,
-    D: 12.5,
-    E: 10
-  };
-  const BASE_DAMAGE_DEFAULT = 15;
+  
 
   function computeHP(durability, level = DEFAULT_LEVEL) {
     const grade = String(durability || '').trim().toUpperCase();
@@ -3639,84 +3641,90 @@
       return battle.stage.penalizedAffinity === stand.affinity;
     }
     
-  function computeBasicAttackDamage(attacker, defender, attackerFighter) {
-    const pwrStat = (attacker.stats?.power || 'C').toUpperCase();
-    let damage = DAMAGE_BY_POWER[pwrStat] ?? 15;
-
-    // Bonus de terreno (15% base, o 30% si Terreno Reclamado)
-    const terrainMult = getTerrainMultiplier(attacker, attackerFighter);
-    damage *= terrainMult;
-
-    // Crítico
-    const crit = Math.random() < getCritChance(attacker.stats.precision);
-    if (crit) damage *= CRIT_MULTIPLIER;
-
-    // Reducción por durabilidad del defensor
-    damage *= (1 - getDurReduction(defender.stats.durability));
-
-    return {
-      damage: Math.max(1, Math.round(damage)),
-      crit,
-      bonusApplied: terrainMult > 1,
-      terrainMult
-    };
-  }
-    
-  function computeSkillDamage(attacker, defender, ability, attackerFighter) {
-    let damage = Number(ability.damage) || 30;
-
-    const pwrBonus = PWR_BASIC_BONUS[attacker.stats.power] || 0;
-    damage += pwrBonus * 0.6;
-
-    // Bonus de terreno (15% base, o 30% si Terreno Reclamado)
-    const terrainMult = getTerrainMultiplier(attacker, attackerFighter);
-    damage *= terrainMult;
-
-    // Crítico
-    const crit = Math.random() < getCritChance(attacker.stats.precision);
-    if (crit) damage *= CRIT_MULTIPLIER;
-
-    // Reducción por durabilidad
-    damage *= (1 - getDurReduction(defender.stats.durability));
-
-    return {
-      damage: Math.max(1, Math.round(damage)),
-      crit,
-      bonusApplied: terrainMult > 1,
-      terrainMult
-    };
-  }
-    
-      /* =========================================================
-     DAÑO PROYECTADO (solo para previsualización en UI)
-     Aplica PWR + terreno + penalización, SIN crítico ni aleatoriedad.
+    /* =========================================================
+     ATAQUE BÁSICO — DAÑO BASE POR RANGO DE PWR
+     El daño base ya sale de DAMAGE_BY_POWER (A=20, B=18, C=15, D=12, E=10).
+     Sobre esa base se aplican: terreno → crítico → mitigación por DUR.
      ========================================================= */
-  function computeProjectedDamage(attacker, defender, ability, kind) {
-    if (!attacker || !defender || !ability) return { damage: 0, mult: 1, pct: 0 };
-
-    // Heal / Shield no tienen daño proyectado
-    if (kind === 'heal' || kind === 'shield') {
-      return { damage: 0, mult: 1, pct: 0 };
+     function computeBasicAttackDamage(attacker, defender, attackerFighter) {
+      const powerGrade = String(attacker.stats?.power || '').trim().toUpperCase();
+      const baseDamage = DAMAGE_BY_POWER[powerGrade] ?? BASIC_ATTACK_DEFAULT;
+  
+      let damage = baseDamage;
+  
+      // Multiplicador de terreno (favorecida/desfavorecida o boost de evento)
+      const terrainMult = getTerrainMultiplier(attacker, attackerFighter || null);
+      damage *= terrainMult;
+  
+      // Crítico
+      const crit = Math.random() < getCritChance(attacker.stats?.precision);
+      if (crit) damage *= CRIT_MULTIPLIER;
+  
+      // Mitigación por durabilidad del defensor
+      damage *= (1 - getDurReduction(defender.stats?.durability));
+  
+      return {
+        damage: Math.max(1, Math.round(damage)),
+        crit,
+        bonusApplied: terrainMult > 1,
+        terrainMult
+      };
     }
-
-    let base = Number(ability.damage) || 30;
-    const pwrBonus = PWR_BASIC_BONUS[attacker.stats.power] || 0;
-    base += pwrBonus * 0.6;
-
-    // Multiplicador de terreno (respeta boost de evento si existe)
-    const mult = getTerrainMultiplier(attacker, attacker.__fighterRef || null);
-    let projected = base * mult;
-
-    // Reducción por durabilidad del defensor
-    projected *= (1 - getDurReduction(defender.stats.durability));
-
-    const pct = Math.round((mult - 1) * 100);
-    return {
-      damage: Math.max(1, Math.round(projected)),
-      mult,
-      pct
-    };
-  }
+    
+    /* =========================================================
+     DAÑO DE HABILIDAD — SIN BONUS AUTOMÁTICO DE PWR
+     El daño sale tal cual del campo `ability.damage`.
+     Sobre él: terreno → crítico → mitigación por DUR.
+     ========================================================= */
+     function computeSkillDamage(attacker, defender, ability, attackerFighter) {
+      let damage = Number(ability.damage) || 30;
+  
+      const terrainMult = getTerrainMultiplier(attacker, attackerFighter || null);
+      damage *= terrainMult;
+  
+      const crit = Math.random() < getCritChance(attacker.stats?.precision);
+      if (crit) damage *= CRIT_MULTIPLIER;
+  
+      damage *= (1 - getDurReduction(defender.stats?.durability));
+  
+      return {
+        damage: Math.max(1, Math.round(damage)),
+        crit,
+        bonusApplied: terrainMult > 1,
+        terrainMult
+      };
+    }
+    
+      
+    /* =========================================================
+     DAÑO PROYECTADO (previsualización en UI)
+     Sin aleatoriedad, sin crítico. Solo base + terreno + DUR.
+     ========================================================= */
+     function computeProjectedDamage(attacker, defender, ability, kind) {
+      if (!attacker || !defender || !ability) return { damage: 0, mult: 1, pct: 0 };
+  
+      // Heal / Shield no proyectan daño
+      if (kind === 'heal' || kind === 'shield') {
+        return { damage: 0, mult: 1, pct: 0 };
+      }
+  
+      // El daño base viene tal cual del caller (básico o habilidad)
+      let projected = Number(ability.damage) || 0;
+  
+      // Multiplicador de terreno (favorecida/desfavorecida o boost de evento)
+      const mult = getTerrainMultiplier(attacker, attacker.__fighterRef || null);
+      projected *= mult;
+  
+      // Mitigación por durabilidad del defensor
+      projected *= (1 - getDurReduction(defender.stats?.durability));
+  
+      const pct = Math.round((mult - 1) * 100);
+      return {
+        damage: Math.max(1, Math.round(projected)),
+        mult,
+        pct
+      };
+    }
 
         /* =========================================================
      SELECCIÓN DE ACCIÓN AUTOMÁTICA (IA / auto-play)
@@ -4096,7 +4104,7 @@
          function updateActionPanel() {
           if (!battle) return;
       
-          const btnStun = document.getElementById('btnSkipRivalTurn');
+          
           const btnRequiem = document.getElementById('btnTriggerRequiem');
       
           if (battle.finished) {
@@ -4113,35 +4121,41 @@
           turnLabel.textContent = `Turno de ${active.data.standName}`;
           turnTimer.textContent = `Ronda ${toRoman(battle.round)}`;
       
-          // --- Ataque Básico ---
-          const isBasicLocked = (battle.basicAttackLocked || 0) > 0;
-      
-          if (isBasicLocked) {
-            btnBasicAttack.disabled = true;
-            btnBasicAttack.classList.add('is-locked');
-            btnBasicAttack.title = '¡Bloqueado por Silencio de Hierro! Solo puedes usar habilidades.';
-            basicAttackMeta.innerHTML =
-              `<span style="color:var(--danger-hi);font-weight:700;">⛓ Bloqueado (${battle.basicAttackLocked})</span>`;
-          } else {
-            btnBasicAttack.disabled = false;
-            btnBasicAttack.classList.remove('is-locked');
-            btnBasicAttack.removeAttribute('title');
-      
-            const basicProj = computeProjectedDamage(
-              { ...active.data, __fighterRef: active },
-              defender.data,
-              { damage: BASIC_ATTACK_BASE + (PWR_BASIC_BONUS[active.data.stats.power] || 0) },
-              'damage'
-            );
-      
-            if (basicProj.pct > 0) {
-              basicAttackMeta.innerHTML = `${basicProj.damage} daño <span style="color:var(--ready-hi);font-weight:700;">(+${basicProj.pct}%)</span>`;
-            } else if (basicProj.pct < 0) {
-              basicAttackMeta.innerHTML = `${basicProj.damage} daño <span style="color:#ff8a70;font-weight:700;">(${basicProj.pct}%)</span>`;
-            } else {
-              basicAttackMeta.textContent = `${basicProj.damage} daño`;
-            }
-          }
+              // ---------- ATAQUE BÁSICO ----------
+    const isBasicLocked = (battle.basicAttackLocked || 0) > 0;
+
+    if (isBasicLocked) {
+      btnBasicAttack.disabled = true;
+      btnBasicAttack.classList.add('is-locked');
+      btnBasicAttack.title = '¡Bloqueado por Silencio de Hierro! Solo puedes usar habilidades.';
+      basicAttackMeta.innerHTML =
+        `<span style="color:var(--danger-hi);font-weight:700;">⛓ Bloqueado (${battle.basicAttackLocked})</span>`;
+    } else {
+      btnBasicAttack.disabled = false;
+      btnBasicAttack.classList.remove('is-locked');
+      btnBasicAttack.removeAttribute('title');
+
+      // Daño base según rango de PWR (A=20, B=18, C=15, D=12, E=10)
+      const powerGrade = String(active.data.stats?.power || '').trim().toUpperCase();
+      const baseDmg = DAMAGE_BY_POWER[powerGrade] ?? BASIC_ATTACK_DEFAULT;
+
+      // Aplicar multiplicador de terreno y mitigación del defensor para proyectar
+      const proj = computeProjectedDamage(
+        { ...active.data, __fighterRef: active },
+        defender.data,
+        { damage: baseDmg },
+        'damage'
+      );
+
+      // Mostrar el daño proyectado con el tag de terreno si aplica
+      if (proj.pct > 0) {
+        basicAttackMeta.innerHTML = `${proj.damage} daño <span style="color:var(--ready-hi);font-weight:700;">(+${proj.pct}%)</span>`;
+      } else if (proj.pct < 0) {
+        basicAttackMeta.innerHTML = `${proj.damage} daño <span style="color:#ff8a70;font-weight:700;">(${proj.pct}%)</span>`;
+      } else {
+        basicAttackMeta.textContent = `${proj.damage} daño`;
+      }
+    }
       
           // --- Habilidades dinámicas ---
           const skillBtns  = [skillBtn0, skillBtn1, skillBtn2, skillBtn3, skillBtn4];
@@ -4229,23 +4243,7 @@
       
           btnBasicAttack.onclick = () => performAction(battle.activeSide, 'basic');
       
-          // --- STUN ---
-          let btnStunRef = document.getElementById('btnSkipRivalTurn');
-          if (!btnStunRef) {
-            btnStunRef = document.createElement('button');
-            btnStunRef.type = 'button';
-            btnStunRef.id = 'btnSkipRivalTurn';
-            btnStunRef.className = 'action-btn action-btn--utility';
-            btnStunRef.innerHTML = `
-              <span class="action-btn__icon">⏳</span>
-              <span class="action-btn__name">Saltar Turno Rival</span>
-              <span class="action-btn__meta">El rival pierde su próximo turno</span>
-            `;
-            const grid = document.querySelector('.battle-actions__grid');
-            if (grid) grid.appendChild(btnStunRef);
-          }
-          btnStunRef.disabled = !!battle.skipRivalPending;
-          btnStunRef.onclick = () => performSkipRivalTurn(battle.activeSide);
+          
       
           // --- DESPERTAR REQUIEM ---
           if (btnRequiem) {
