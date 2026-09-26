@@ -4452,5 +4452,168 @@
     background: rgba(160, 109, 224, 0.12);
     color: #f0d9ff;
   }
+
+  /* ============================================================
+   BOTONERA TÁCTICA DE COMBATE
+   ============================================================ */
+.battle-actions__tactical {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+}
+
+.tactical-btn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: linear-gradient(180deg, rgba(10, 8, 16, 0.75), rgba(10, 8, 16, 0.55));
+  color: var(--ink-1);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  font-family: var(--font-body);
+  text-align: center;
+}
+
+.tactical-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  background: linear-gradient(180deg, rgba(30, 24, 44, 0.95), rgba(19, 16, 28, 0.85));
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.55);
+}
+
+.tactical-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  filter: grayscale(0.7);
+}
+
+.tactical-btn__icon {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.tactical-btn__label {
+  font-family: var(--font-display);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.tactical-btn__meta {
+  font-family: var(--font-body);
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  letter-spacing: 0.02em;
+}
+
+/* Variantes */
+.tactical-btn--pass {
+  border-color: rgba(79, 212, 212, 0.5);
+}
+.tactical-btn--pass:hover:not(:disabled) {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 16px rgba(79, 212, 212, 0.4);
+  color: #d6f5f5;
+}
+.tactical-btn--pass .tactical-btn__icon { color: var(--accent-cyan); }
+
+.tactical-btn--dodge {
+  border-color: rgba(108, 209, 138, 0.5);
+}
+.tactical-btn--dodge:hover:not(:disabled) {
+  border-color: var(--ready-hi);
+  box-shadow: 0 0 16px rgba(108, 209, 138, 0.4);
+  color: #d6f5df;
+}
+.tactical-btn--dodge .tactical-btn__icon { color: var(--ready-hi); }
+
+.tactical-btn--dodge.is-active {
+  border-color: var(--ready-hi);
+  background: linear-gradient(180deg, rgba(108, 209, 138, 0.22), rgba(108, 209, 138, 0.06));
+  box-shadow: 0 0 20px rgba(108, 209, 138, 0.65), 0 0 36px rgba(108, 209, 138, 0.35);
+  animation: dodgeReadyPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes dodgeReadyPulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(108, 209, 138, 0.65), 0 0 36px rgba(108, 209, 138, 0.35); }
+  50%      { box-shadow: 0 0 28px rgba(108, 209, 138, 1), 0 0 48px rgba(108, 209, 138, 0.55); }
+}
+
+.tactical-btn--surrender {
+  border-color: rgba(200, 68, 58, 0.5);
+}
+.tactical-btn--surrender:hover:not(:disabled) {
+  border-color: var(--danger-hi);
+  box-shadow: 0 0 16px rgba(200, 68, 58, 0.5);
+  color: #ffb3a1;
+}
+.tactical-btn--surrender .tactical-btn__icon { color: var(--danger-hi); }
+
+/* Indicador flotante en el sprite: está en guardia de esquive */
+.battle-fighter.is-dodging .battle-fighter__sprite-wrap::after {
+  content: "💨 ESQUIVE";
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 3px 10px;
+  font-family: var(--font-display);
+  font-size: 0.58rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  color: #0b1a10;
+  background: linear-gradient(180deg, #a3e8b8, #4fae6a);
+  border: 1px solid #e6ffe9;
+  border-radius: 999px;
+  box-shadow: 0 0 16px rgba(108, 209, 138, 0.85), 0 0 32px rgba(108, 209, 138, 0.45);
+  animation: dodgeReadyPulse 1.2s ease-in-out infinite;
+  z-index: 3;
+  pointer-events: none;
+}
+
+/* Log específicos de las acciones tácticas */
+.log-entry--tactical-pass {
+  border-left-color: var(--accent-cyan);
+  background: rgba(79, 212, 212, 0.1);
+  color: #d6f5f5;
+}
+
+.log-entry--tactical-dodge-success {
+  border-left-color: var(--ready-hi);
+  background: rgba(108, 209, 138, 0.14);
+  color: #d6f5df;
+  font-weight: 600;
+}
+
+.log-entry--tactical-dodge-fail {
+  border-left-color: #b8b8b8;
+  background: rgba(180, 180, 180, 0.08);
+  color: #d8d8d8;
+  font-style: italic;
+}
+
+.log-entry--tactical-surrender {
+  border-left-color: var(--danger-hi);
+  background: linear-gradient(90deg, rgba(200, 68, 58, 0.22), rgba(200, 68, 58, 0.06));
+  color: #ffd9d3;
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 10px 12px;
+}
+
+@media (max-width: 620px) {
+  .battle-actions__tactical { grid-template-columns: 1fr; }
+}
   /* ===== UTILIDADES ===== */
   [hidden] { display: none !important; }

@@ -352,6 +352,24 @@
             <span class="action-btn__name">Ataque Básico</span>
             <span class="action-btn__meta" id="basicAttackMeta">— daño</span>
           </button>
+                  <!-- Botonera táctica -->
+        <div class="battle-actions__tactical" id="battleTacticalBar">
+          <button type="button" class="tactical-btn tactical-btn--pass" id="btnPassTurn" title="Cede el turno al rival y reduce cooldowns">
+            <span class="tactical-btn__icon">⏳</span>
+            <span class="tactical-btn__label">Pasar Turno</span>
+          </button>
+
+          <button type="button" class="tactical-btn tactical-btn--dodge" id="btnDodgeAction" title="70% de anular completamente el próximo ataque">
+            <span class="tactical-btn__icon">💨</span>
+            <span class="tactical-btn__label">Esquivar</span>
+            <span class="tactical-btn__meta" id="dodgeMeta">70% · 2/2</span>
+          </button>
+
+          <button type="button" class="tactical-btn tactical-btn--surrender" id="btnSurrenderAction" title="Ríndete y concede la victoria al rival">
+            <span class="tactical-btn__icon">🏳</span>
+            <span class="tactical-btn__label">Rendirse</span>
+          </button>
+        </div>
 
           <!-- Las 3 habilidades se inyectan dinámicamente -->
           <button type="button" class="action-btn action-btn--skill" data-skill-index="0" id="skillBtn0" disabled>

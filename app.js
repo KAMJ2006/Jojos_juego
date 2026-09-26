@@ -2751,24 +2751,168 @@
      FÁBRICA DE ESTADO DE COMBATIENTE
      Garantiza que SIEMPRE existan los campos de estado nuevo.
      ========================================================= */
-  function createFighterState(data, hp, maxHp) {
-    const safeHp = Number.isFinite(hp) ? hp : 100;
-    const safeMaxHp = Number.isFinite(maxHp) ? maxHp : safeHp;
+     function createFighterState(data, hp, maxHp) {
+      const safeHp = Number.isFinite(hp) ? hp : 100;
+      const safeMaxHp = Number.isFinite(maxHp) ? maxHp : safeHp;
+  
+      return {
+        data,
+        hp: safeHp,
+        maxHp: safeMaxHp,
+        cooldowns: [0, 0, 0, 0, 0],
+        totalDamage: 0,
+        shield: false,
+        currentShield: 0,
+        reflectActive: false,
+        statusEffects: [],
+        tempBuffs: { damageMult: 1.0 },
+        __requiemTriggered: false,
+        __isRequiemForm: false,
+        // --- Tácticas ---
+        dodgesRemaining: 2,
+        isDodging: false
+      };
+    }
+      /* =========================================================
+     ACCIÓN TÁCTICA: PASAR TURNO
+     Cede el turno al rival sin atacar (cicla cooldowns).
+     ========================================================= */
+  function passTurnAction() {
+    if (!battle || battle.finished || battle.busy) return;
+    if (battle.activeSide !== battle.activeSide) return; // sanity
 
-    return {
-      data,
-      hp: safeHp,
-      maxHp: safeMaxHp,
-      cooldowns: [0, 0, 0, 0, 0],
-      totalDamage: 0,
-      shield: false,
-      currentShield: 0,
-      reflectActive: false,
-      statusEffects: [],
-      tempBuffs: { damageMult: 1.0 },
-      __requiemTriggered: false,
-      __isRequiemForm: false
-    };
+    const side = battle.activeSide;
+    const active = battle[side];
+    if (!active) return;
+
+    battle.busy = true;
+
+    pushLog({
+      side,
+      type: 'tactical-pass',
+      html: `⏳ <strong>${escapeHtml(active.data.standName)}</strong> decide pasar su turno y recuperar compostura.`
+    });
+
+    // Pequeña sacudida visual para comunicar la acción
+    const activeEl = side === 'p1' ? fighterP1 : fighterP2;
+    if (activeEl) {
+      activeEl.classList.add('is-attacking');
+      setTimeout(() => activeEl.classList.remove('is-attacking'), 400);
+    }
+
+    battle.busy = false;
+    passTurn();
+  }
+    /* =========================================================
+     ACCIÓN TÁCTICA: RENDIRSE
+     El combatiente activo concede la victoria al rival.
+     ========================================================= */
+     function surrenderAction() {
+      if (!battle || battle.finished || battle.busy) return;
+  
+      const side = battle.activeSide;
+      const active = battle[side];
+      const rivalSide = side === 'p1' ? 'p2' : 'p1';
+      const rival = battle[rivalSide];
+      if (!active || !rival) return;
+  
+      if (!confirm(`¿Rendir a ${active.data.standName}? La victoria será para ${rival.data.standName}.`)) {
+        return;
+      }
+  
+      battle.busy = true;
+  
+      // HP a 0
+      active.hp = 0;
+  
+      // Marcadores visuales
+      const activeEl = side === 'p1' ? fighterP1 : fighterP2;
+      if (activeEl) {
+        activeEl.classList.add('is-defeated', 'is-hit');
+        setTimeout(() => activeEl.classList.remove('is-hit'), 700);
+      }
+  
+      updateHpBar(side);
+  
+      // Log
+      pushLog({
+        side,
+        type: 'tactical-surrender',
+        html: `🏳 <strong>${escapeHtml(active.data.standName)}</strong> se ha rendido. ` +
+              `¡La victoria es para <strong>${escapeHtml(rival.data.standName)}</strong>!`
+      });
+  
+      pushLog({
+        side: rivalSide,
+        type: 'ko',
+        html: `¡K.O. por rendición! <strong>${escapeHtml(rival.data.standName)}</strong> se alza con la victoria.`
+      });
+  
+      // Cierre
+      battle.finished = true;
+      renderBattleUI();
+      updateActionPanel();
+      setTimeout(() => showVictoryModal(rivalSide), 800);
+  
+      battle.busy = false;
+    }
+      /* =========================================================
+     ACCIÓN TÁCTICA: ESQUIVE TOTAL
+     70% de probabilidad de anular el próximo daño recibido.
+     Límite: 2 usos por combatiente por combate.
+     ========================================================= */
+  function dodgeAction() {
+    if (!battle || battle.finished || battle.busy) return;
+
+    const side = battle.activeSide;
+    const active = battle[side];
+    const rivalSide = side === 'p1' ? 'p2' : 'p1';
+    const rival = battle[rivalSide];
+    if (!active || !rival) return;
+
+    if (active.dodgesRemaining <= 0) {
+      toast('Sin esquives disponibles.', 'error');
+      return;
+    }
+
+    battle.busy = true;
+
+    // Consumir uso
+    active.dodgesRemaining = Math.max(0, (Number(active.dodgesRemaining) || 0) - 1);
+
+    const roll = Math.random();
+    const success = roll < 0.70;
+
+    const activeEl = side === 'p1' ? fighterP1 : fighterP2;
+
+    if (success) {
+      active.isDodging = true;
+
+      if (activeEl) {
+        activeEl.classList.add('is-dodging');
+      }
+
+      pushLog({
+        side,
+        type: 'tactical-dodge-success',
+        html: `💨 <strong>${escapeHtml(active.data.standName)}</strong> prepara una <strong>postura de esquive total</strong>. ` +
+              `El próximo ataque rival será anulado. (${active.dodgesRemaining} esquive${active.dodgesRemaining === 1 ? '' : 's'} restante${active.dodgesRemaining === 1 ? '' : 's'})`
+      });
+    } else {
+      pushLog({
+        side,
+        type: 'tactical-dodge-fail',
+        html: `💨 <strong>${escapeHtml(active.data.standName)}</strong> intentó esquivar pero <strong>tropezó y quedó expuesto</strong>. (${active.dodgesRemaining} esquive${active.dodgesRemaining === 1 ? '' : 's'} restante${active.dodgesRemaining === 1 ? '' : 's'})`
+      });
+
+      if (activeEl) {
+        activeEl.classList.add('is-hit');
+        setTimeout(() => activeEl.classList.remove('is-hit'), 600);
+      }
+    }
+
+    battle.busy = false;
+    passTurn();
   }
 
   function startBattleEngine() {
@@ -2982,6 +3126,9 @@
           fighterP1.classList.toggle('has-shield', !!battle.p1.shield);
           renderStatusChips();
           fighterP2.classList.toggle('has-shield', !!battle.p2.shield);
+            // Indicador visual de esquive preparado
+          fighterP1.classList.toggle('is-dodging', !!battle.p1.isDodging);
+          fighterP2.classList.toggle('is-dodging', !!battle.p2.isDodging);
             /* =========================================================
      RENDER DE CHIPS DE ESTADO
      ========================================================= */
@@ -3025,6 +3172,10 @@
         if (fighter.currentShield > 0) {
           chips.push(`<span class="status-effect-chip status-effect-chip--shield">🛡 ${fighter.currentShield}</span>`);
         }
+            // Esquive preparado
+          if (fighter.isDodging) {
+            chips.push(`<span class="status-effect-chip" style="color:#4fae6a;border-color:#4fae6a;background:rgba(79,174,106,0.18);">💨 Esquive</span>`);
+          }
   
         return chips.join('');
       };
@@ -3305,132 +3456,19 @@
           result = computeBasicAttackDamage(attacker.data, defender.data, attacker);
         } else if (actionType === 'skill') {
           const ability = attacker.data.abilities[skillIndex];
-          if (!ability || attacker.cooldowns[skillIndex] > 0) {
+          if (!ability || (attacker.cooldowns && attacker.cooldowns[skillIndex] > 0)) {
             battle.busy = false;
             return;
           }
+      
           const result = executeAbility(attackerSide, skillIndex);
-
-          actionName = ability.name || `Habilidad ${skillIndex + 1}`;
-          const kind = ability.type || 'damage';
-    
-          // ---------- SEGUROS ANTI-CHISPAS (bloqueo sin gasto de turno) ----------
-          if (kind === 'heal' && attacker.hp >= attacker.maxHp) {
-            pushLog({
-              side: attackerSide,
-              type: '',
-              html: `<span style="color:var(--ink-2);">⚠ <strong>${escapeHtml(attacker.data.standName)}</strong> intenta usar <em>${escapeHtml(actionName)}</em> pero su HP ya está al máximo. <strong>Acción cancelada.</strong></span>`
-            });
-            battle.busy = false;
-            return; // ← NO consume turno, NO aplica cooldown
-          }
-    
-          if (kind === 'shield' && attacker.shield) {
-            pushLog({
-              side: attackerSide,
-              type: '',
-              html: `<span style="color:var(--ink-2);">⚠ <strong>${escapeHtml(attacker.data.standName)}</strong> ya tiene un escudo activo. <strong>Acción cancelada.</strong></span>`
-            });
-            battle.busy = false;
-            return; // ← NO consume turno, NO aplica cooldown
-          }
-    
-          // ---------- HEAL ----------
-          if (kind === 'heal') {
-            const healPct = 0.22;
-            const rawHeal = Math.round(attacker.maxHp * healPct);
-            const before = attacker.hp;
-            attacker.hp = Math.min(attacker.maxHp, attacker.hp + rawHeal);
-            const healed = attacker.hp - before;
-    
-            attacker.cooldowns[skillIndex] = (Number(ability.cooldown) || 0) + 1;
-    
-            const selfEl = attackerSide === 'p1' ? fighterP1 : fighterP2;
-            selfEl.classList.add('is-healing');
-            setTimeout(() => selfEl.classList.remove('is-healing'), 1000);
-    
-            const healFloat = document.createElement('div');
-            healFloat.className = 'damage-float damage-float--heal';
-            healFloat.textContent = `+${healed}`;
-            selfEl.appendChild(healFloat);
-            setTimeout(() => healFloat.remove(), 1200);
-    
-            updateHpBar(attackerSide);
-    
-            const cryText = attacker.data.battleCry
-              ? `<span class="log-entry__cry">“${escapeHtml(attacker.data.battleCry)}”</span>`
-              : '';
-            pushLog({
-              side: attackerSide,
-              type: 'heal',
-              html: `<strong>${escapeHtml(attacker.data.standName)}</strong> usa <em>${escapeHtml(actionName)}</em> ` +
-                    `y recupera <span style="color:var(--ready-hi);font-weight:700;">+${healed}</span> HP.` +
-                    cryText
-            });
-    
+      
+          // Si executeAbility ya resolvió el turno o no requiere pase, controlamos el estado
+          if (result && result.skipTurn === false) {
             battle.busy = false;
             passTurn();
-            return;
           }
-    
-          // ---------- SHIELD ----------
-          if (kind === 'shield') {
-            attacker.shield = true;
-            attacker.cooldowns[skillIndex] = (Number(ability.cooldown) || 0) + 1;
-    
-            const selfEl = attackerSide === 'p1' ? fighterP1 : fighterP2;
-            selfEl.classList.add('is-shielding', 'has-shield');
-            setTimeout(() => selfEl.classList.remove('is-shielding'), 1000);
-    
-            const cryText = attacker.data.battleCry
-              ? `<span class="log-entry__cry">“${escapeHtml(attacker.data.battleCry)}”</span>`
-              : '';
-            pushLog({
-              side: attackerSide,
-              type: 'shield',
-              html: `<strong>${escapeHtml(attacker.data.standName)}</strong> activa <em>${escapeHtml(actionName)}</em> ` +
-                    `y entra en <span style="color:var(--accent-cyan);font-weight:700;">guarda defensiva</span>. ` +
-                    `El próximo daño recibido se reducirá un 50%.` +
-                    cryText
-            });
-    
-            battle.busy = false;
-            passTurn();
-            return;
-          }
-    
-          // ---------- DAMAGE (default) ----------
-          // Chequeo de Precisión
-          const acc = clampNumber(ability.accuracy, 10, 100, 100);
-          const roll = Math.random() * 100;
-    
-          if (roll > acc) {
-            // FALLO POR PRECISIÓN: consume turno, aplica cooldown, no aplica daño ni animación de impacto
-            attacker.cooldowns[skillIndex] = (Number(ability.cooldown) || 0) + 1;
-    
-            const attackerEl = attackerSide === 'p1' ? fighterP1 : fighterP2;
-            attackerEl.classList.add('is-attacking');
-            setTimeout(() => attackerEl.classList.remove('is-attacking'), 500);
-    
-            const cryText = attacker.data.battleCry
-              ? `<span class="log-entry__cry">“${escapeHtml(attacker.data.battleCry)}”</span>`
-              : '';
-            pushLog({
-              side: attackerSide,
-              type: 'miss',
-              html: `<strong>${escapeHtml(attacker.data.standName)}</strong> intenta <em>${escapeHtml(actionName)}</em> ` +
-                    `pero <span style="color:#b8b8b8;font-weight:700;">falla por precisión (${Math.round(acc)}% requerido).</span>` +
-                    cryText
-            });
-    
-            battle.busy = false;
-            passTurn();
-            return;
-          }
-    
-          // Ataque exitoso
-          result = computeSkillDamage(attacker.data, defender.data, ability, attacker);
-          attacker.cooldowns[skillIndex] = (Number(ability.cooldown) || 0) + 1;
+          return;
         }
     
         // Ejecutar visualmente
@@ -3443,8 +3481,32 @@
     
         setTimeout(() => {
                 // Aplicar daño — con posible reducción por escudo
-      let finalDamage = result.damage;
-      const defenderEl = defenderSide === 'p1' ? fighterP1 : fighterP2;
+            // --- INTERCEPCIÓN DE ESQUIVE TOTAL ---
+            const defenderEl = defenderSide === 'p1' ? fighterP1 : fighterP2;
+
+            if (defender.isDodging) {
+              defender.isDodging = false;
+      
+              if (defenderEl) {
+                defenderEl.classList.add('is-dodging');
+                setTimeout(() => defenderEl.classList.remove('is-dodging'), 800);
+              }
+      
+              pushLog({
+                side: defenderSide,
+                type: 'tactical-dodge-success',
+                html: `💨 <strong>${escapeHtml(defender.data.standName)}</strong> esquivó por completo el ataque de ` +
+                      `<strong>${escapeHtml(attacker.data.standName)}</strong> gracias a sus reflejos.`
+              });
+      
+              // Terminar turno sin daño
+              battle.busy = false;
+              passTurn();
+              return;
+            }
+      
+            // Aplicar daño — con posible reducción por escudo
+            let finalDamage = result.damage;
 
       if (defender.shield) {
         finalDamage = Math.round(finalDamage * 0.5);
@@ -3853,6 +3915,38 @@
             btnRequiem.hidden = !canAwaken;
             btnRequiem.onclick = () => triggerRequiem(activeSide);
           }
+              // --- BOTONERA TÁCTICA ---
+    const btnPass = document.getElementById('btnPassTurn');
+    const btnDodge = document.getElementById('btnDodgeAction');
+    const btnSurrender = document.getElementById('btnSurrenderAction');
+    const dodgeMeta = document.getElementById('dodgeMeta');
+
+    if (btnPass && btnDodge && btnSurrender) {
+      const isFinished = battle.finished;
+      const active = battle.activeSide === 'p1' ? battle.p1 : battle.p2;
+      const dodgesLeft = Number(active.dodgesRemaining) || 0;
+
+      btnPass.disabled = isFinished;
+      btnSurrender.disabled = isFinished;
+      btnDodge.disabled = isFinished || dodgesLeft <= 0;
+
+      // Meta de usos restantes
+      if (dodgeMeta) {
+        dodgeMeta.textContent = `70% · ${dodgesLeft}/2`;
+      }
+
+      // Estado visual activo si el combatiente ya está en guardia
+      if (active.isDodging) {
+        btnDodge.classList.add('is-active');
+      } else {
+        btnDodge.classList.remove('is-active');
+      }
+
+      // Rebind (una sola vez, sin acumular listeners)
+      btnPass.onclick = () => passTurnAction();
+      btnDodge.onclick = () => dodgeAction();
+      btnSurrender.onclick = () => surrenderAction();
+    }
         }
           /* =========================================================
      EJECUCIÓN MODULAR DE HABILIDADES
@@ -4049,6 +4143,7 @@
       }
     }
 
+
     /* ============================
        ROL: DAMAGE / ATAQUE
        ============================ */
@@ -4074,7 +4169,32 @@
       attacker.statusEffects = attacker.statusEffects || [];
       defender.statusEffects = defender.statusEffects || [];
       defender.currentShield = defender.currentShield || 0;
+      // --- INTERCEPCIÓN DE ESQUIVE TOTAL ---
+      if (defender.isDodging) {
+        defender.isDodging = false;
 
+        if (defenderEl) {
+          defenderEl.classList.remove('is-dodging');
+          defenderEl.classList.add('is-dodging'); // re-disparar animación
+          setTimeout(() => defenderEl.classList.remove('is-dodging'), 800);
+        }
+
+        // Animación de ataque del atacante (falla)
+        attackerEl.classList.add('is-attacking');
+        setTimeout(() => attackerEl.classList.remove('is-attacking'), 500);
+
+        pushLog({
+          side: defenderSide,
+          type: 'tactical-dodge-success',
+          html: `💨 <strong>${escapeHtml(defender.data.standName)}</strong> esquivó por completo el ataque de ` +
+                `<strong>${escapeHtml(attacker.data.standName)}</strong> gracias a sus reflejos.`
+        });
+
+        // Terminar turno sin daño
+        battle.busy = false;
+        passTurn();
+        return { skipTurn: true };
+      }
       // Cálculo base con buff
       const buffMult = attacker.tempBuffs?.damageMult ?? 1.0;
       let baseDamage = Number(ability.damage) || 30;
@@ -4292,12 +4412,20 @@
     }, 900);
   }
     
-        function disableAllActions() {
-          const allBtns = [btnBasicAttack, skillBtn0, skillBtn1, skillBtn2, skillBtn3, skillBtn4];
-          allBtns.forEach((b) => {
-            if (b) b.disabled = true;
-          });
-        }
+  function disableAllActions() {
+    const allBtns = [btnBasicAttack, skillBtn0, skillBtn1, skillBtn2, skillBtn3, skillBtn4];
+    allBtns.forEach((b) => {
+      if (b) b.disabled = true;
+    });
+
+    // Tácticas
+    const btnPass = document.getElementById('btnPassTurn');
+    const btnDodge = document.getElementById('btnDodgeAction');
+    const btnSurrender = document.getElementById('btnSurrenderAction');
+    if (btnPass) btnPass.disabled = true;
+    if (btnDodge) btnDodge.disabled = true;
+    if (btnSurrender) btnSurrender.disabled = true;
+  }
     
       /* =========================================================
          MÓDULO 3 — LOG
