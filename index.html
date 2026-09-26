@@ -34,6 +34,7 @@
       <button type="button" class="btn btn--ghost" id="btnImportTrigger">⇧ Cargar Roster (JSON)</button>
       <button type="button" class="btn btn--danger" id="btnClearAll">✕ Limpiar Todo</button>
       <button type="button" class="btn btn--ready" id="btnReadyDraw">⚔ Entrar a la Arena</button>
+      <button type="button" class="btn btn--ghost" id="btnResetTournamentHeader" title="Reiniciar todos los estados del torneo">↻ Reiniciar Torneo</button>
       <input type="file" id="importFileInput" accept="application/json,.json" hidden>
     </nav>
   </header>
@@ -75,12 +76,6 @@
             <span class="mode-btn__hint">Sin consecuencias</span>
           </button>
         </div>
-  
-        <div class="mode-selector__actions">
-          <button type="button" class="btn btn--danger" id="btnResetTournament" hidden>
-            ↻ Reiniciar Torneo
-          </button>
-        </div>
       </div>
 
       <!-- Configuración de Eventos de Arena -->
@@ -119,8 +114,11 @@
           <span class="tournament-status__value" id="tournamentDefeatedCount">—</span>
         </div>
         <div class="tournament-status__item">
-          <span class="tournament-status__label">Ronda Actual</span>
-          <span class="tournament-status__value" id="tournamentRound">I</span>
+          <span class="tournament-status__label">Ganadores</span>
+          <span class="tournament-status__value" id="tournamentWinnerCount">0</span>
+        </div>
+        <div class="tournament-status__phase" id="tournamentPhase" data-phase="waiting">
+          Fase: Emparejamiento abierto
         </div>
       </div>
 
@@ -158,6 +156,9 @@
           <div class="roulette-center">
             <div class="roulette-emblem" id="rouletteEmblem">運命</div>
             <button type="button" class="btn btn--gold" id="btnSpinRoulette">🎰 GIRAR RULETA</button>
+            <button type="button" class="btn btn--winners-round" id="btnWinnersRound" hidden>
+              🏆 Iniciar Ronda de Ganadores
+            </button>
             <div class="roulette-onoma" id="rouletteOnoma" hidden>DODODO...</div>
           </div>
     
@@ -360,6 +361,18 @@
             <span class="action-btn__name" id="skillName2">Habilidad III</span>
             <span class="action-btn__meta" id="skillMeta2">—</span>
           </button>
+          
+          <button type="button" class="action-btn action-btn--skill" data-skill-index="3" id="skillBtn3" disabled hidden>
+            <span class="action-btn__icon">Ⅳ</span>
+            <span class="action-btn__name" id="skillName3">Habilidad IV</span>
+            <span class="action-btn__meta" id="skillMeta3">—</span>
+          </button>
+
+          <button type="button" class="action-btn action-btn--skill" data-skill-index="4" id="skillBtn4" disabled hidden>
+            <span class="action-btn__icon">Ⅴ</span>
+            <span class="action-btn__name" id="skillName4">Habilidad V</span>
+            <span class="action-btn__meta" id="skillMeta4">—</span>
+          </button>
         </div>
       </div>
 
@@ -529,7 +542,7 @@
           </fieldset>
 
           <fieldset class="form__group">
-            <legend>Habilidades (3)</legend>
+            <legend>Habilidades (hasta 5)</legend>
 
             <div class="ability-block" data-ability-index="0">
               <div class="ability-block__header">Habilidad I</div>
@@ -668,6 +681,99 @@
                 <input type="text" class="ability-desc" maxlength="120" placeholder="Ráfaga de golpes a velocidad luz.">
               </label>
             </div>
+               <!-- Habilidad IV (OPCIONAL) -->
+               <div class="ability-block ability-block--optional" data-ability-index="3">
+                <div class="ability-block__header">Habilidad IV <span class="ability-block__tag">Opcional</span></div>
+                <div class="form__row">
+                  <label class="field">
+                    <span class="field__label">Nombre</span>
+                    <input type="text" class="ability-name" maxlength="40" placeholder="Ej. Ora Ora Rush">
+                  </label>
+                  <label class="field field--small">
+                    <span class="field__label">Daño Base (15–60)</span>
+                    <input type="number" class="ability-damage" min="15" max="60" step="1" value="30">
+                  </label>
+                  <label class="field field--small">
+                    <span class="field__label">Cooldown (0–5)</span>
+                    <input type="number" class="ability-cooldown" min="0" max="5" step="1" value="1">
+                  </label>
+                  <label class="field field--small">
+                    <span class="field__label">Precisión %</span>
+                    <input type="number" class="ability-accuracy" min="10" max="100" step="5" value="100">
+                  </label>
+                </div>
+  
+                <!-- Selector de tipo Habilidad IV -->
+                <div class="ability-type-pills" role="radiogroup" aria-label="Tipo de habilidad">
+                  <label class="type-pill type-pill--damage">
+                    <input type="radio" class="ability-type" name="abilityType2" value="damage" checked>
+                    <span class="type-pill__icon">⚔</span>
+                    <span class="type-pill__label">Ataque</span>
+                  </label>
+                  <label class="type-pill type-pill--heal">
+                    <input type="radio" class="ability-type" name="abilityType2" value="heal">
+                    <span class="type-pill__icon">✚</span>
+                    <span class="type-pill__label">Soporte</span>
+                  </label>
+                  <label class="type-pill type-pill--shield">
+                    <input type="radio" class="ability-type" name="abilityType2" value="shield">
+                    <span class="type-pill__icon">🛡</span>
+                    <span class="type-pill__label">Escudo</span>
+                  </label>
+                </div>
+  
+                <label class="field">
+                  <span class="field__label">Descripción breve</span>
+                  <input type="text" class="ability-desc" maxlength="120" placeholder="Ráfaga de golpes a velocidad luz.">
+                </label>
+              </div>
+  
+              <!-- Habilidad V (OPCIONAL) -->
+              <div class="ability-block ability-block--optional" data-ability-index="4">
+                <div class="ability-block__header"> Habilidad V <span class="ability-block__tag">Opcional</span></div>
+                <div class="form__row">
+                  <label class="field">
+                    <span class="field__label">Nombre</span>
+                    <input type="text" class="ability-name" maxlength="40" placeholder="Ej. Ora Ora Rush">
+                  </label>
+                  <label class="field field--small">
+                    <span class="field__label">Daño Base (15–60)</span>
+                    <input type="number" class="ability-damage" min="15" max="60" step="1" value="30">
+                  </label>
+                  <label class="field field--small">
+                    <span class="field__label">Cooldown (0–5)</span>
+                    <input type="number" class="ability-cooldown" min="0" max="5" step="1" value="1">
+                  </label>
+                  <label class="field field--small">
+                    <span class="field__label">Precisión %</span>
+                    <input type="number" class="ability-accuracy" min="10" max="100" step="5" value="100">
+                  </label>
+                </div>
+  
+                <!-- Selector de tipo Habilidad V -->
+                <div class="ability-type-pills" role="radiogroup" aria-label="Tipo de habilidad">
+                  <label class="type-pill type-pill--damage">
+                    <input type="radio" class="ability-type" name="abilityType2" value="damage" checked>
+                    <span class="type-pill__icon">⚔</span>
+                    <span class="type-pill__label">Ataque</span>
+                  </label>
+                  <label class="type-pill type-pill--heal">
+                    <input type="radio" class="ability-type" name="abilityType2" value="heal">
+                    <span class="type-pill__icon">✚</span>
+                    <span class="type-pill__label">Soporte</span>
+                  </label>
+                  <label class="type-pill type-pill--shield">
+                    <input type="radio" class="ability-type" name="abilityType2" value="shield">
+                    <span class="type-pill__icon">🛡</span>
+                    <span class="type-pill__label">Escudo</span>
+                  </label>
+                </div>
+  
+                <label class="field">
+                  <span class="field__label">Descripción breve</span>
+                  <input type="text" class="ability-desc" maxlength="120" placeholder="Ráfaga de golpes a velocidad luz.">
+                </label>
+              </div>
           </fieldset>
 
           <div class="form__actions">
@@ -958,6 +1064,10 @@
                 <option value="Veneno">Veneno</option>
               </select>
             </label>
+            <label class="field">
+              <span class="field__label">Grito de Batalla <em>(opcional)</em></span>
+              <input type="text" class="dual-cry" maxlength="40" placeholder="Ej. ¡ORA ORA ORA!">
+            </label>
 
             <div class="dual-stats">
               <label class="field field--stat"><span class="field__label">PWR</span>
@@ -981,7 +1091,7 @@
             </div>
 
             <details class="dual-abilities">
-              <summary>Habilidades (3)</summary>
+              <summary>Habilidades (5)</summary>
               <div class="dual-ability" data-idx="0">
                 <input type="text" class="dual-ab-name" maxlength="40" placeholder="Nombre Habilidad I">
                 <select class="dual-ab-type">
@@ -992,6 +1102,7 @@
                 <input type="number" class="dual-ab-damage" min="15" max="60" value="30" title="Daño">
                 <input type="number" class="dual-ab-cd" min="0" max="5" value="1" title="CD">
                 <input type="number" class="dual-ab-acc" min="10" max="100" step="5" value="100" title="Precisión %">
+                <input type="text" class="dual-ab-desc" maxlength="120" placeholder="Descripción breve de la habilidad…">
               </div>
               <div class="dual-ability" data-idx="1">
                 <input type="text" class="dual-ab-name" maxlength="40" placeholder="Nombre Habilidad II">
@@ -1003,6 +1114,7 @@
                 <input type="number" class="dual-ab-damage" min="15" max="60" value="30" title="Daño">
                 <input type="number" class="dual-ab-cd" min="0" max="5" value="1" title="CD">
                 <input type="number" class="dual-ab-acc" min="10" max="100" step="5" value="100" title="Precisión %">
+                <input type="text" class="dual-ab-desc" maxlength="120" placeholder="Descripción breve de la habilidad…">
               </div>
               <div class="dual-ability" data-idx="2">
                 <input type="text" class="dual-ab-name" maxlength="40" placeholder="Nombre Habilidad III">
@@ -1014,6 +1126,32 @@
                 <input type="number" class="dual-ab-damage" min="15" max="60" value="30" title="Daño">
                 <input type="number" class="dual-ab-cd" min="0" max="5" value="1" title="CD">
                 <input type="number" class="dual-ab-acc" min="10" max="100" step="5" value="100" title="Precisión %">
+                <input type="text" class="dual-ab-desc" maxlength="120" placeholder="Descripción breve de la habilidad…">
+              </div>
+              <div class="dual-ability dual-ability--optional" data-idx="3">
+                <input type="text" class="dual-ab-name" maxlength="40" placeholder="Habilidad IV (opcional)">
+                <select class="dual-ab-type">
+                  <option value="damage" selected>Ataque</option>
+                  <option value="heal">Soporte</option>
+                  <option value="shield">Escudo</option>
+                </select>
+                <input type="number" class="dual-ab-damage" min="15" max="60" value="30" title="Daño">
+                <input type="number" class="dual-ab-cd" min="0" max="5" value="1" title="CD">
+                <input type="number" class="dual-ab-acc" min="10" max="100" step="5" value="100" title="Precisión %">
+                <input type="text" class="dual-ab-desc" maxlength="120" placeholder="Descripción breve…">
+              </div>
+
+              <div class="dual-ability dual-ability--optional" data-idx="4">
+                <input type="text" class="dual-ab-name" maxlength="40" placeholder="Habilidad V (opcional)">
+                <select class="dual-ab-type">
+                  <option value="damage" selected>Ataque</option>
+                  <option value="heal">Soporte</option>
+                  <option value="shield">Escudo</option>
+                </select>
+                <input type="number" class="dual-ab-damage" min="15" max="60" value="30" title="Daño">
+                <input type="number" class="dual-ab-cd" min="0" max="5" value="1" title="CD">
+                <input type="number" class="dual-ab-acc" min="10" max="100" step="5" value="100" title="Precisión %">
+                <input type="text" class="dual-ab-desc" maxlength="120" placeholder="Descripción breve…">
               </div>
             </details>
           </div>
@@ -1067,6 +1205,10 @@
                 <option value="Veneno">Veneno</option>
               </select>
             </label>
+            <label class="field">
+              <span class="field__label">Grito de Batalla <em>(opcional)</em></span>
+              <input type="text" class="dual-cry" maxlength="40" placeholder="Ej. ¡ORA ORA ORA!">
+            </label>
 
             <div class="dual-stats">
               <label class="field field--stat"><span class="field__label">PWR</span>
@@ -1090,7 +1232,7 @@
             </div>
 
             <details class="dual-abilities">
-              <summary>Habilidades (3)</summary>
+              <summary>Habilidades (5)</summary>
               <div class="dual-ability" data-idx="0">
                 <input type="text" class="dual-ab-name" maxlength="40" placeholder="Nombre Habilidad I">
                 <select class="dual-ab-type">
@@ -1101,6 +1243,7 @@
                 <input type="number" class="dual-ab-damage" min="15" max="60" value="30" title="Daño">
                 <input type="number" class="dual-ab-cd" min="0" max="5" value="1" title="CD">
                 <input type="number" class="dual-ab-acc" min="10" max="100" step="5" value="100" title="Precisión %">
+                <input type="text" class="dual-ab-desc" maxlength="120" placeholder="Descripción breve de la habilidad…">
               </div>
               <div class="dual-ability" data-idx="1">
                 <input type="text" class="dual-ab-name" maxlength="40" placeholder="Nombre Habilidad II">
@@ -1112,6 +1255,7 @@
                 <input type="number" class="dual-ab-damage" min="15" max="60" value="30" title="Daño">
                 <input type="number" class="dual-ab-cd" min="0" max="5" value="1" title="CD">
                 <input type="number" class="dual-ab-acc" min="10" max="100" step="5" value="100" title="Precisión %">
+                <input type="text" class="dual-ab-desc" maxlength="120" placeholder="Descripción breve de la habilidad…">
               </div>
               <div class="dual-ability" data-idx="2">
                 <input type="text" class="dual-ab-name" maxlength="40" placeholder="Nombre Habilidad III">
@@ -1123,6 +1267,32 @@
                 <input type="number" class="dual-ab-damage" min="15" max="60" value="30" title="Daño">
                 <input type="number" class="dual-ab-cd" min="0" max="5" value="1" title="CD">
                 <input type="number" class="dual-ab-acc" min="10" max="100" step="5" value="100" title="Precisión %">
+                <input type="text" class="dual-ab-desc" maxlength="120" placeholder="Descripción breve de la habilidad…">
+              </div>
+              <div class="dual-ability dual-ability--optional" data-idx="3">
+                <input type="text" class="dual-ab-name" maxlength="40" placeholder="Habilidad IV (opcional)">
+                <select class="dual-ab-type">
+                  <option value="damage" selected>Ataque</option>
+                  <option value="heal">Soporte</option>
+                  <option value="shield">Escudo</option>
+                </select>
+                <input type="number" class="dual-ab-damage" min="15" max="60" value="30" title="Daño">
+                <input type="number" class="dual-ab-cd" min="0" max="5" value="1" title="CD">
+                <input type="number" class="dual-ab-acc" min="10" max="100" step="5" value="100" title="Precisión %">
+                <input type="text" class="dual-ab-desc" maxlength="120" placeholder="Descripción breve…">
+              </div>
+
+              <div class="dual-ability dual-ability--optional" data-idx="4">
+                <input type="text" class="dual-ab-name" maxlength="40" placeholder="Habilidad V (opcional)">
+                <select class="dual-ab-type">
+                  <option value="damage" selected>Ataque</option>
+                  <option value="heal">Soporte</option>
+                  <option value="shield">Escudo</option>
+                </select>
+                <input type="number" class="dual-ab-damage" min="15" max="60" value="30" title="Daño">
+                <input type="number" class="dual-ab-cd" min="0" max="5" value="1" title="CD">
+                <input type="number" class="dual-ab-acc" min="10" max="100" step="5" value="100" title="Precisión %">
+                <input type="text" class="dual-ab-desc" maxlength="120" placeholder="Descripción breve…">
               </div>
             </details>
           </div>

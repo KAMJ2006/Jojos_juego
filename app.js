@@ -57,6 +57,16 @@
     const HP_LOW_THRESHOLD = 0.30;
     const HP_MID_THRESHOLD = 0.60;
 
+    const skillBtn3 = document.getElementById('skillBtn3');
+    const skillBtn4 = document.getElementById('skillBtn4');
+    const skillName3 = document.getElementById('skillName3');
+    const skillName4 = document.getElementById('skillName4');
+    const skillMeta3 = document.getElementById('skillMeta3');
+    const skillMeta4 = document.getElementById('skillMeta4');
+  
+    const MAX_ABILITIES = 5;
+    const MIN_ABILITIES = 1;
+
     /* =========================================================
      MÓDULO 4 — CONSTANTES Y ESTADO
      ========================================================= */
@@ -65,6 +75,23 @@
 
     let currentMode = 'royale'; // 'royale' | 'free'
     let tournamentRound = 1;
+
+      /* =========================================================
+     MÓDULO 4 — ESTADOS DEL TORNEO
+     ========================================================= */
+  const STAND_STATE = {
+    WAITING: 'waiting',
+    WINNER:  'winner',
+    RETIRED: 'retired'
+  };
+
+  const PHASE = {
+    WAITING:   'waiting',   // Fase 1: emparejar entre WAITING
+    WINNERS:   'winners',   // Fase 2: emparejar entre WINNER
+    CHAMPION:  'champion'   // Fase 3: campeón coronado
+  };
+
+  let tournamentPhase = PHASE.WAITING;
 
     /* =========================================================
         MÓDULO 2 — REFS DOM
@@ -206,16 +233,26 @@
   const btnResetFromChampion  = $('#btnResetFromChampion');
   const btnBackToRosterFromChampion = $('#btnBackToRosterFromChampion');
 
+  const btnResetTournamentHeader = $('#btnResetTournamentHeader');
+  const btnWinnersRound          = $('#btnWinnersRound');
+  const tournamentWinnerCount    = $('#tournamentWinnerCount');
+  const tournamentPhaseEl        = $('#tournamentPhase');
+
       /* =========================================================
      MÓDULO 4 — MODO DE JUEGO
      ========================================================= */
   function loadMode() {
+    const storedPhase = localStorage.getItem('jja_tournament_phase_v1');
+    tournamentPhase = ['waiting', 'winners', 'champion'].includes(storedPhase)
+      ? storedPhase
+      : PHASE.WAITING;
     const stored = localStorage.getItem(MODE_KEY);
     currentMode = (stored === 'free' || stored === 'royale') ? stored : 'royale';
     tournamentRound = Number(localStorage.getItem(ROUND_KEY)) || 1;
   }
 
   function saveMode() {
+    localStorage.setItem('jja_tournament_phase_v1', tournamentPhase);
     localStorage.setItem(MODE_KEY, currentMode);
     localStorage.setItem(ROUND_KEY, String(tournamentRound));
   }
@@ -229,6 +266,7 @@
 
     // Al entrar a Modo Libre, limpiamos el estado del torneo en curso
     if (mode === 'free' && previousMode !== 'free') {
+      tournamentPhase = PHASE.WAITING;
       roster = roster.map((s) => ({
         ...s,
         tournamentDamage: 0,
@@ -242,6 +280,7 @@
 
     // Al volver a Royale desde Free, empezamos torneo limpio
     if (mode === 'royale' && previousMode === 'free') {
+      tournamentPhase = PHASE.WAITING;
       roster = roster.map((s) => ({
         ...s,
         isDefeated: false,
@@ -268,68 +307,162 @@
     modeBtnFree.classList.toggle('is-active', !isRoyale);
     modeBtnFree.setAttribute('aria-selected', String(!isRoyale));
 
-    btnResetTournament.hidden = !isRoyale;
-    tournamentStatus.hidden = !isRoyale;
+    
+    if (tournamentStatus) tournamentStatus.hidden = !isRoyale;
   }
 
   function updateTournamentStatus() {
-    if (currentMode !== 'royale') return;
+    if (currentMode !== 'royale') {
+      if (tournamentPhaseEl) tournamentPhaseEl.hidden = true;
+      return;
+    }
 
-    const alive = roster.filter((s) => !s.isDefeated).length;
-    const defeated = roster.filter((s) => s.isDefeated).length;
+    const waiting = roster.filter((s) => (s.tournamentState || STAND_STATE.WAITING) === STAND_STATE.WAITING).length;
+    const winners = roster.filter((s) => s.tournamentState === STAND_STATE.WINNER).length;
+    const retired = roster.filter((s) => (s.tournamentState || (s.isDefeated ? STAND_STATE.RETIRED : STAND_STATE.WAITING)) === STAND_STATE.RETIRED).length;
 
-    tournamentAliveCount.textContent = String(alive);
-    tournamentDefeatedCount.textContent = String(defeated);
-    tournamentRoundEl.textContent = toRoman(tournamentRound);
+    tournamentAliveCount.textContent = String(waiting + winners); // "en pie"
+    tournamentDefeatedCount.textContent = String(retired);
+    if (tournamentWinnerCount) tournamentWinnerCount.textContent = String(winners);
+
+    if (tournamentPhaseEl) {
+      tournamentPhaseEl.hidden = false;
+      let label = 'Fase: Emparejamiento abierto';
+      let phaseKey = 'waiting';
+
+      if (tournamentPhase === PHASE.WAITING) {
+        label = `Fase: Emparejamiento abierto — ${waiting} en espera`;
+        phaseKey = 'waiting';
+      } else if (tournamentPhase === PHASE.WINNERS) {
+        label = `Fase: Ronda de Ganadores — ${winners} en liza`;
+        phaseKey = 'winners';
+      } else if (tournamentPhase === PHASE.CHAMPION) {
+        label = '¡Campeón coronado!';
+        phaseKey = 'champion';
+      }
+
+      tournamentPhaseEl.textContent = label;
+      tournamentPhaseEl.setAttribute('data-phase', phaseKey);
+    }
+
+    // Actualizar visibilidad del botón "Iniciar Ronda de Ganadores"
+    if (btnWinnersRound) {
+      const shouldShow = currentMode === 'royale' && tournamentPhase === PHASE.WAITING && waiting < 2 && winners >= 2;
+      btnWinnersRound.hidden = !shouldShow;
+    }
   }
 
   /* =========================================================
      MÓDULO 4 — ELEGIBLES PARA LA RULETA
      ========================================================= */
-  function getEligibleStands() {
-    if (currentMode === 'royale') {
-      return roster.filter((s) => !s.isDefeated);
+     function getEligibleStands() {
+      if (currentMode !== 'royale') {
+        // Modo libre: todos siempre
+        return roster.slice();
+      }
+  
+      if (tournamentPhase === PHASE.WAITING) {
+        // Fase 1: solo los que aún no han peleado ni han sido retirados
+        return roster.filter((s) => {
+          const state = s.tournamentState || (s.isDefeated ? STAND_STATE.RETIRED : STAND_STATE.WAITING);
+          return state === STAND_STATE.WAITING;
+        });
+      }
+  
+      if (tournamentPhase === PHASE.WINNERS) {
+        // Fase 2: solo los ganadores
+        return roster.filter((s) => (s.tournamentState === STAND_STATE.WINNER));
+      }
+  
+      // Fase 3: no hay elegibles, ya hay campeón
+      return [];
     }
-    return roster.slice();
-  }
 
   /* =========================================================
      MÓDULO 4 — MARCAR K.O. (BATTLE ROYALE)
      ========================================================= */
-  function markDefeated(loserId) {
-    if (currentMode !== 'royale') return;
-    const idx = roster.findIndex((s) => s.id === loserId);
-    if (idx < 0) return;
-    roster[idx].isDefeated = true;
-    roster[idx].defeatedAt = Date.now();
-    saveRoster();
-  }
+     function markDefeated(loserId) {
+      if (currentMode !== 'royale') return;
+      const idx = roster.findIndex((s) => s.id === loserId);
+      if (idx < 0) return;
+      roster[idx].tournamentState = STAND_STATE.RETIRED;
+      roster[idx].isDefeated = true;
+      roster[idx].defeatedAt = Date.now();
+      saveRoster();
+    }
+  
+    function markWinner(winnerId) {
+      if (currentMode !== 'royale') return;
+      const idx = roster.findIndex((s) => s.id === winnerId);
+      if (idx < 0) return;
+      roster[idx].tournamentState = STAND_STATE.WINNER;
+      saveRoster();
+    }
 
-  function checkTournamentEnd() {
-    if (currentMode !== 'royale') return false;
-    const survivors = roster.filter((s) => !s.isDefeated);
-    return survivors.length <= 1;
-  }
+    function checkTournamentEnd() {
+      if (currentMode !== 'royale') return false;
+  
+      const waiting = roster.filter((s) => (s.tournamentState || STAND_STATE.WAITING) === STAND_STATE.WAITING).length;
+      const winners = roster.filter((s) => s.tournamentState === STAND_STATE.WINNER).length;
+      const retired = roster.filter((s) => s.tournamentState === STAND_STATE.RETIRED).length;
+  
+      // Fase 1 → Fase 2: ya no hay WAITING, hay 2+ WINNER
+      if (tournamentPhase === PHASE.WAITING && waiting < 2 && winners >= 2) {
+        tournamentPhase = PHASE.WINNERS;
+        saveMode();
+        pushTournamentNotice(`¡Fase de Ganadores! Quedan ${winners} aspirantes al título.`);
+        return true;
+      }
+  
+      // Fase 2 → Fase 3: solo queda 1 WINNER
+      if (tournamentPhase === PHASE.WINNERS && winners <= 1) {
+        tournamentPhase = PHASE.CHAMPION;
+        saveMode();
+        return true;
+      }
+  
+      // Fase 1 → Fase 3 directa (por si acaso sólo hay 1 WAITING y 0 WINNER)
+      if (tournamentPhase === PHASE.WAITING && waiting === 1 && winners === 0) {
+        tournamentPhase = PHASE.CHAMPION;
+        saveMode();
+        return true;
+      }
+  
+      return false;
+    }
+  
+    function pushTournamentNotice(text) {
+      // Reutilizamos el banner de turno si estamos en combate, o un toast si no
+      if (typeof turnBannerText !== 'undefined' && turnBannerText && battleView && !battleView.hidden) {
+        turnBannerText.textContent = text.toUpperCase();
+        turnBanner.hidden = false;
+        turnBanner.style.animation = 'none';
+        void turnBanner.offsetWidth;
+        turnBanner.style.animation = '';
+        setTimeout(() => { turnBanner.hidden = true; }, 1700);
+      } else {
+        toast(text, 'success');
+      }
+    }
 
-  function resetTournament() {
-    roster = roster.map((s) => {
-      const { isDefeated, defeatedAt, ...rest } = s;
-      return {
-        ...rest,
+    function resetTournament() {
+      roster = roster.map((s) => ({
+        ...s,
         isDefeated: false,
         defeatedAt: null,
+        tournamentState: STAND_STATE.WAITING,
         lastHp: null,
         tournamentDamage: 0,
         tournamentBattles: 0
-      };
-    });
-    tournamentRound = 1;
-    saveRoster();
-    saveMode();
-    renderGallery();
-    updateTournamentStatus();
-    toast('Torneo reiniciado. Todos los Stands vuelven a estar disponibles.', 'success');
-  }
+      }));
+      tournamentRound = 1;
+      tournamentPhase = PHASE.WAITING;
+      saveRoster();
+      saveMode();
+      renderGallery();
+      updateTournamentStatus();
+      toast('Torneo reiniciado. Todos los Stands vuelven a estar disponibles.', 'success');
+    }
 
   /* =========================================================
      MÓDULO 4 — MODAL DE CAMPEÓN
@@ -374,6 +507,28 @@
     championBackdrop.hidden = true;
   }
 
+  function startWinnersRound() {
+    if (currentMode !== 'royale') return;
+    const winners = roster.filter((s) => s.tournamentState === STAND_STATE.WINNER).length;
+    if (winners < 2) {
+      toast('No hay suficientes ganadores para una nueva ronda.', 'error');
+      return;
+    }
+    tournamentPhase = PHASE.WINNERS;
+    saveMode();
+    updateTournamentStatus();
+    renderGallery();
+
+    // Resetear cooldowns/HP para la nueva ronda: los WINNER vuelven al ruedo
+    // (conservan stats, pero ya no serán "WAITING")
+    // Si el usuario quiere que sigan como WINNER entre rondas, lo dejamos así.
+
+    toast(`¡Ronda de Ganadores! ${winners} aspirantes al título.`, 'success');
+    if (btnWinnersRound) btnWinnersRound.hidden = true;
+
+    // Al terminar esta ronda, el ganador único será campeón.
+  }
+
   /* =========================================================
      MÓDULO 4 — EVENTOS
      ========================================================= */
@@ -381,10 +536,16 @@
     modeBtnRoyale.addEventListener('click', () => setMode('royale'));
     modeBtnFree.addEventListener('click', () => setMode('free'));
 
-    btnResetTournament.addEventListener('click', () => {
-      if (!confirm('¿Reiniciar el torneo? Todos los Stands eliminados volverán a estar disponibles.')) return;
-      resetTournament();
-    });
+    if (btnResetTournamentHeader) {
+      btnResetTournamentHeader.addEventListener('click', () => {
+        if (!confirm('¿Reiniciar el torneo? Todos los estados volverán a WAITING.')) return;
+        resetTournament();
+      });
+    }
+    // Iniciar ronda de ganadores
+    if (btnWinnersRound) {
+      btnWinnersRound.addEventListener('click', startWinnersRound);
+    }
 
     btnResetFromChampion.addEventListener('click', () => {
       closeChampionModal();
@@ -607,16 +768,28 @@
         ? `<p class="stand-card__cry">“${escapeHtml(stand.battleCry)}”</p>`
         : '';
   
-        const retiredBadge = stand.isDefeated
-        ? '<span class="stand-card__retired">RETIRED</span>'
-        : '';
-  
-      card.className = 'stand-card' + (stand.isDefeated ? ' is-defeated' : '');
-      card.dataset.id = stand.id;
-  
+        const state = stand.tournamentState || (stand.isDefeated ? STAND_STATE.RETIRED : STAND_STATE.WAITING);
+
+    let stateBadge = '';
+    let extraClass = '';
+
+    if (state === STAND_STATE.RETIRED) {
+      stateBadge = '<span class="stand-card__retired">RETIRED</span>';
+      extraClass = ' is-defeated';
+    } else if (state === STAND_STATE.WINNER) {
+      stateBadge = '<span class="stand-card__winner">WINNER</span>';
+      extraClass = ' is-winner';
+    } else if (currentMode === 'royale') {
+      stateBadge = '<span class="stand-card__waiting">WAITING</span>';
+    }
+
+    card.className = 'stand-card' + extraClass;
+    card.dataset.id = stand.id;
+
+    
       card.innerHTML = `
         <div class="stand-card__frame">
-          ${retiredBadge}
+          ${stateBadge}
           <span class="stand-card__affinity">${escapeHtml(stand.affinity)}</span>
           <span class="stand-card__hp">${hp}</span>
           ${imgMarkup}
@@ -704,47 +877,55 @@
     /* =========================================================
        FORM — RESET / FILL / RECOLECCIÓN
        ========================================================= */
-    function resetForm() {
-      standForm.reset();
-      pendingImageBase64 = null;
-      pendingImageMime = null;
-      updatePreview();
-      updateDerived();
-  
-      // Reasignar valores por defecto de stats (reset() ya los pone a "B")
-      $$('.field--stat select').forEach((sel) => { sel.value = 'B'; });
-  
-      // Reasignar valores por defecto de habilidades
-      $$('.ability-block').forEach((block) => {
-        const accEl = block.querySelector('.ability-accuracy');
-        if (accEl) accEl.value = 100;
-        const dmg = block.querySelector('.ability-damage');
-        const cd  = block.querySelector('.ability-cooldown');
-        if (dmg) dmg.value = 30;
-        if (cd)  cd.value = 1;
-            // Reset de las píldoras de tipo
-            const typeRadios = block.querySelectorAll('.ability-type');
-            typeRadios.forEach((r) => {
-              r.checked = (r.value === 'damage');
-              r.closest('.type-pill')?.classList.toggle('is-checked', r.checked);
-            });
-          });
-
-          // Reset afinidad personalizada
+       function resetForm() {
+        standForm.reset();
+        pendingImageBase64 = null;
+        pendingImageMime = null;
+        updatePreview();
+        updateDerived();
+    
+        // Reset stats por defecto a B
+        $$('.field--stat select').forEach((sel) => { sel.value = 'B'; });
+    
+        // Reset afinidad personalizada
         if (customAffinityField) customAffinityField.hidden = true;
         if (customAffinityInput) customAffinityInput.value = '';
-    }
+    
+        // Reset de TODOS los bloques de habilidad (1-5)
+        $$('.ability-block').forEach((block, i) => {
+          const nameEl = block.querySelector('.ability-name');
+          const dmgEl  = block.querySelector('.ability-damage');
+          const cdEl   = block.querySelector('.ability-cooldown');
+          const descEl = block.querySelector('.ability-desc');
+          const accEl  = block.querySelector('.ability-accuracy');
+    
+          if (nameEl) nameEl.value = '';
+          if (dmgEl)  dmgEl.value  = 30;
+          if (cdEl)   cdEl.value   = 1;
+          if (descEl) descEl.value = '';
+          if (accEl)  accEl.value  = 100;
+    
+          const typeRadios = block.querySelectorAll('.ability-type');
+          typeRadios.forEach((r) => {
+            r.checked = (r.value === 'damage');
+            r.closest('.type-pill')?.classList.toggle('is-checked', r.checked);
+          });
+    
+          if (i >= 3) block.classList.add('is-empty');
+        });
+      }
   
     function fillForm(stand) {
       artistNameInput.value = stand.artistName || '';
       standNameInput.value = stand.standName || '';
-          // ¿Es una afinidad base o personalizada?
-    if (BASE_AFFINITIES.includes(stand.affinity)) {
+      battleCryInput.value = stand.battleCry || '';
+  
+      // Afinidad base o personalizada
+      if (BASE_AFFINITIES.includes(stand.affinity)) {
         affinitySelect.value = stand.affinity;
         if (customAffinityField) customAffinityField.hidden = true;
         if (customAffinityInput) customAffinityInput.value = '';
       } else if (stand.affinity) {
-        // Personalizada: seleccionamos "+ Otra" y precargamos el input
         affinitySelect.value = '__custom__';
         if (customAffinityField) customAffinityField.hidden = false;
         if (customAffinityInput) customAffinityInput.value = stand.affinity;
@@ -752,7 +933,6 @@
         affinitySelect.value = 'Físico';
         if (customAffinityField) customAffinityField.hidden = true;
       }
-      battleCryInput.value = stand.battleCry || '';
   
       STAT_KEYS.forEach((k) => {
         const sel = $(`.field--stat select[data-stat="${k}"]`);
@@ -760,27 +940,34 @@
       });
   
       const blocks = $$('.ability-block');
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < MAX_ABILITIES; i++) {
         const block = blocks[i];
         if (!block) continue;
+  
         const ab = (stand.abilities && stand.abilities[i]) || {};
         const nameEl = block.querySelector('.ability-name');
         const dmgEl  = block.querySelector('.ability-damage');
         const cdEl   = block.querySelector('.ability-cooldown');
         const descEl = block.querySelector('.ability-desc');
+        const accEl  = block.querySelector('.ability-accuracy');
+  
         if (nameEl) nameEl.value = ab.name || '';
         if (dmgEl)  dmgEl.value  = ab.damage ?? 30;
         if (cdEl)   cdEl.value   = ab.cooldown ?? 1;
         if (descEl) descEl.value = ab.description || '';
-              // Restaurar el tipo de habilidad
-        const accEl = block.querySelector('.ability-accuracy');
-        if (accEl) accEl.value = ab.accuracy ?? 100;
-      const blockTypeRadios = block.querySelectorAll('.ability-type');
-      const savedType = ab.type || 'damage';
-      blockTypeRadios.forEach((r) => {
-        r.checked = (r.value === savedType);
-        r.closest('.type-pill')?.classList.toggle('is-checked', r.checked);
-      });
+        if (accEl)  accEl.value  = ab.accuracy ?? 100;
+  
+        const typeRadios = block.querySelectorAll('.ability-type');
+        const savedType = ab.type || 'damage';
+        typeRadios.forEach((r) => {
+          r.checked = (r.value === savedType);
+          r.closest('.type-pill')?.classList.toggle('is-checked', r.checked);
+        });
+  
+        // Marcar visualmente si el slot opcional está vacío
+        if (i >= 3) {
+          block.classList.toggle('is-empty', !ab.name);
+        }
       }
     }
   
@@ -793,8 +980,9 @@
   
       const abilities = $$('.ability-block').map((block) => {
         const checkedType = block.querySelector('.ability-type:checked');
+        const name = (block.querySelector('.ability-name')?.value || '').trim();
         return {
-          name: (block.querySelector('.ability-name')?.value || '').trim(),
+          name,
           damage: clampNumber(block.querySelector('.ability-damage')?.value, 15, 60, 30),
           cooldown: clampNumber(block.querySelector('.ability-cooldown')?.value, 0, 5, 1),
           accuracy: clampNumber(block.querySelector('.ability-accuracy')?.value, 10, 100, 100),
@@ -803,13 +991,16 @@
         };
       });
   
+      // Filtrar: solo habilidades con nombre (permite slots vacíos opcionales)
+      const activeAbilities = abilities.filter((ab) => ab.name.length > 0);
+  
       return {
         artistName: artistNameInput.value.trim(),
         standName: standNameInput.value.trim(),
         affinity: resolveAffinityFromForm(),
         battleCry: battleCryInput.value.trim(),
         stats,
-        abilities
+        abilities: activeAbilities
       };
     }
   
@@ -1007,8 +1198,8 @@
     }
   
     function normalizeStand(raw) {
-        
       if (!raw || typeof raw !== 'object') return null;
+  
       const stats = {};
       STAT_KEYS.forEach((k) => {
         const v = raw.stats && raw.stats[k];
@@ -1016,19 +1207,21 @@
       });
   
       const abilities = Array.isArray(raw.abilities)
-      ? raw.abilities.slice(0, 3).map((ab) => ({
-          accuracy: clampNumber(ab?.accuracy, 10, 100, 100),
-          name: String(ab?.name || '').slice(0, 60),
-          damage: clampNumber(ab?.damage, 15, 60, 30),
-          cooldown: clampNumber(ab?.cooldown, 0, 5, 1),
-          description: String(ab?.description || '').slice(0, 200),
-          type: ['damage', 'heal', 'shield'].includes(ab?.type) ? ab.type : 'damage'
-        }))
-      : [];
-
-    while (abilities.length < 3) {
-      abilities.push({ name: '', damage: 30, cooldown: 1, description: '', type: 'damage', accuracy: 100 });
-    }
+        ? raw.abilities.slice(0, MAX_ABILITIES).map((ab) => ({
+            name: String(ab?.name || '').slice(0, 60),
+            damage: clampNumber(ab?.damage, 15, 60, 30),
+            cooldown: clampNumber(ab?.cooldown, 0, 5, 1),
+            accuracy: clampNumber(ab?.accuracy, 10, 100, 100),
+            description: String(ab?.description || '').slice(0, 200),
+            type: ['damage', 'heal', 'shield'].includes(ab?.type) ? ab.type : 'damage'
+          }))
+        : [];
+  
+      // Aseguramos al menos 1 habilidad con nombre (nunca 0)
+      const activeAbilities = abilities.filter((a) => a.name.length > 0);
+      while (activeAbilities.length < MIN_ABILITIES) {
+        activeAbilities.push({ name: 'Ataque Básico', damage: 30, cooldown: 0, accuracy: 100, description: '', type: 'damage' });
+      }
   
       return {
         id: typeof raw.id === 'string' && raw.id ? raw.id : uid(),
@@ -1037,17 +1230,20 @@
         affinity: String(raw.affinity || 'Físico').slice(0, 30),
         battleCry: String(raw.battleCry || '').slice(0, 40),
         stats,
-        abilities,
+        abilities: activeAbilities,
         image: typeof raw.image === 'string' ? raw.image : null,
         imageMime: typeof raw.imageMime === 'string' ? raw.imageMime : null,
         level: clampNumber(raw.level, 1, 99, DEFAULT_LEVEL),
-        createdAt: Number(raw.createdAt) || Date.now(),
-        updatedAt: Date.now(),
         isDefeated: Boolean(raw.isDefeated),
         defeatedAt: Number(raw.defeatedAt) || null,
         lastHp: Number(raw.lastHp) || null,
-        tournamentBattles: Number(raw.tournamentBattles) || 0,
         tournamentDamage: Number(raw.tournamentDamage) || 0,
+        tournamentBattles: Number(raw.tournamentBattles) || 0,
+        tournamentState: ['waiting', 'winner', 'retired'].includes(raw.tournamentState)
+          ? raw.tournamentState
+          : (raw.isDefeated ? STAND_STATE.RETIRED : STAND_STATE.WAITING),
+        createdAt: Number(raw.createdAt) || Date.now(),
+        updatedAt: Date.now()
       };
     }
   
@@ -1076,11 +1272,13 @@
             ...s,
             isDefeated: false,
             defeatedAt: null,
+            tournamentState: STAND_STATE.WAITING,
             lastHp: null,
             tournamentDamage: 0,
             tournamentBattles: 0
           }));
           tournamentRound = 1;
+          tournamentPhase = PHASE.WAITING;
           saveRoster();
           saveMode();
           renderGallery();
@@ -1709,9 +1907,11 @@
     
         applyModeUI();
         updateTournamentStatus();
+        renderGallery();
     
         window.scrollTo(0, 0);
       }
+      
 
   function showRosterView() {
     tournamentView.hidden = true;
@@ -1763,15 +1963,32 @@
 
     const eligible = getEligibleStands();
 
-    // Battle Royale: si solo queda 1, anunciar campeón
-    if (currentMode === 'royale' && eligible.length <= 1) {
-      if (eligible.length === 1) {
-        toast('¡Torneo finalizado! Queda un único superviviente.', 'success');
+    // Fase 3: campeón coronado
+    if (currentMode === 'royale' && tournamentPhase === PHASE.CHAMPION) {
+      const champion = roster.find((s) => s.tournamentState === STAND_STATE.WINNER);
+      if (champion) {
+        toast('¡Torneo finalizado! Ya hay campeón.', 'success');
         showChampionModal();
       } else {
-        toast('No hay Stands elegibles. Reinicia el torneo o cambia a Modo Libre.', 'error');
+        toast('No hay campeón que coronar. Reinicia el torneo.', 'error');
       }
       return;
+    }
+
+    // Fase 1 con <2 WAITING pero ≥2 WINNER: sugerir ronda de ganadores
+    if (currentMode === 'royale' && tournamentPhase === PHASE.WAITING && eligible.length < 2) {
+      const winners = roster.filter((s) => s.tournamentState === STAND_STATE.WINNER).length;
+      if (winners >= 2) {
+        toast('Ya no quedan aspirantes en espera. Pulsa "Iniciar Ronda de Ganadores".', 'info');
+        if (btnWinnersRound) btnWinnersRound.hidden = false;
+        return;
+      }
+      // Si solo hay 1 en total, coronar
+      checkTournamentEnd();
+      if (tournamentPhase === PHASE.CHAMPION) {
+        showChampionModal();
+        return;
+      }
     }
 
     if (eligible.length < 2) {
@@ -1927,56 +2144,140 @@
      MÓDULO 2 — INICIAR COMBATE (puente al Módulo 3)
      ========================================================= */
      function startFight() {
-        if (!currentMatchup || !currentMatchup.p1 || !currentMatchup.p2) {
-          toast('No hay enfrentamiento activo.', 'error');
-          return;
-        }
-        const battleData = {
-          createdAt: Date.now(),
-          p1: sanitizeForBattle(currentMatchup.p1),
-          p2: sanitizeForBattle(currentMatchup.p2),
-          stage: currentMatchup.stage ? {
-            id: currentMatchup.stage.id,
-            name: currentMatchup.stage.name,
-            affinity: currentMatchup.stage.affinity,
-            image: currentMatchup.stage.image
-          } : null,
-          bonusPercent: STAGE_BONUS_PERCENT
-        };
-    
-        try {
-          localStorage.setItem(CURRENT_BATTLE_KEY, JSON.stringify(battleData));
-        } catch (err) {
-          console.error(err);
-          toast('No se pudo guardar el combate.', 'error');
-          return;
-        }
-    
-        window.dispatchEvent(new CustomEvent('jja:battle-ready', { detail: battleData }));
-    
-        // Transición al motor de combate
-        startBattleEngine();
+      if (!currentMatchup || !currentMatchup.p1 || !currentMatchup.p2) {
+        toast('No hay enfrentamiento activo.', 'error');
+        return;
       }
+  
+      // =========================================================
+       // PAYLOAD MINIMALISTA: sin imágenes Base64 para no saturar localStorage
+       // Solo guardamos referencias + estado del combate.
+       // Las imágenes se resuelven en runtime desde el roster en memoria.
+       // =========================================================
+      const buildBattleRef = (fighter) => ({
+        id: fighter.id,
+        artistName: fighter.artistName,
+        standName: fighter.standName,
+        affinity: fighter.affinity,
+        battleCry: fighter.battleCry || '',
+        stats: { ...fighter.stats },
+        abilities: (fighter.abilities || []).map((a) => ({
+          name: a.name || '',
+          type: a.type || 'damage',
+          damage: Number(a.damage) || 30,
+          cooldown: Number(a.cooldown) || 0,
+          accuracy: Number(a.accuracy) || 100,
+          description: a.description || ''
+        })),
+        level: fighter.level || DEFAULT_LEVEL,
+        hp: computeHP(fighter.stats.durability, fighter.level || DEFAULT_LEVEL),
+        damageBonus: computeDamageBonus(fighter.stats.power)
+        // ⚠ Sin image / imageMime — se leen del roster en runtime
+      });
+  
+      const battleData = {
+        createdAt: Date.now(),
+        p1: buildBattleRef(currentMatchup.p1),
+        p2: buildBattleRef(currentMatchup.p2),
+        stage: currentMatchup.stage ? {
+          id: currentMatchup.stage.id,
+          name: currentMatchup.stage.name,
+          affinity: currentMatchup.stage.affinity,
+          penalizedAffinity: currentMatchup.stage.penalizedAffinity || '',
+          // ⚠ Sin image — se resuelve desde stages en runtime
+        } : null,
+        bonusPercent: STAGE_BONUS_PERCENT
+      };
+  
+      const saved = safeSetItem(CURRENT_BATTLE_KEY, battleData, 'estado de combate');
+      if (!saved) {
+        // No bloqueamos el combate si falla la persistencia; solo avisamos.
+        console.warn('[JoJo Roster] Combate no persistido por cuota. Continuando en memoria.');
+      }
+  
+      window.dispatchEvent(new CustomEvent('jja:battle-ready', { detail: battleData }));
+  
+      // Transición al motor de combate (en memoria, con imágenes reales)
+      startBattleEngine();
+    }
 
-  function sanitizeForBattle(stand) {
-    return {
-      id: stand.id,
-      artistName: stand.artistName,
-      standName: stand.standName,
-      affinity: stand.affinity,
-      battleCry: stand.battleCry || '',
-      stats: { ...stand.stats },
-      abilities: (stand.abilities || []).map((a) => ({
-        ...a,
-        type: ['damage', 'heal', 'shield'].includes(a.type) ? a.type : 'damage',
-        accuracy: clampNumber(a.accuracy, 10, 100, 100)
-      })),
-      image: stand.image || null,
-      level: stand.level || DEFAULT_LEVEL,
-      hp: computeHP(stand.stats.durability, stand.level || DEFAULT_LEVEL),
-      damageBonus: computeDamageBonus(stand.stats.power)
-    };
+      /* =========================================================
+     RESOLUCIÓN DE IMÁGENES EN RUNTIME
+     Lee la imagen del roster (o del stage) por id, evitando
+     persistir Base64 en localStorage.
+     ========================================================= */
+  function resolveFighterImage(standId) {
+    const s = roster.find((r) => r.id === standId);
+    return s && s.image ? s.image : null;
   }
+
+  function resolveStageImage(stageId) {
+    if (!stageId) return null;
+    const st = stages.find((s) => s.id === stageId);
+    return st && st.image ? st.image : null;
+  }
+
+    function sanitizeForBattle(stand) {
+      return {
+        id: stand.id,
+        artistName: stand.artistName,
+        standName: stand.standName,
+        affinity: stand.affinity,
+        battleCry: stand.battleCry || '',
+        stats: { ...stand.stats },
+        abilities: (stand.abilities || []).map((a) => ({
+          name: a.name || '',
+          type: ['damage', 'heal', 'shield'].includes(a.type) ? a.type : 'damage',
+          damage: clampNumber(a.damage, 15, 60, 30),
+          cooldown: clampNumber(a.cooldown, 0, 5, 1),
+          accuracy: clampNumber(a.accuracy, 10, 100, 100),
+          description: a.description || ''
+        })),
+        image: stand.image || null,
+        level: stand.level || DEFAULT_LEVEL,
+        hp: computeHP(stand.stats.durability, stand.level || DEFAULT_LEVEL),
+        damageBonus: computeDamageBonus(stand.stats.power)
+      };
+    }
+      /* =========================================================
+     ACCIÓN DE UTILIDAD: SALTAR TURNO RIVAL (STUN)
+     - El rival pierde su siguiente turno.
+     - Se marca skipRivalPending = true; en passTurn() se consume
+       automáticamente devolviendo el turno al jugador actual.
+     ========================================================= */
+  function performSkipRivalTurn(side) {
+    if (!battle || battle.finished || battle.busy) return;
+    if (battle.activeSide !== side) return;
+    if (battle.skipRivalPending) return;
+
+    battle.busy = true;
+
+    const attacker = battle[side];
+    const defenderSide = side === 'p1' ? 'p2' : 'p1';
+    const defender = battle[defenderSide];
+
+    // Marcar stun para el próximo turno del rival
+    battle.skipRivalPending = true;
+
+    // Log
+    pushLog({
+      side,
+      type: 'bonus',
+      html: `⏳ <strong>${escapeHtml(attacker.data.standName)}</strong> deja fuera de combate a ` +
+            `<strong>${escapeHtml(defender.data.standName)}</strong>. <strong>¡Turno omitido!</strong>`
+    });
+
+    // Efecto visual
+    const defenderEl = defenderSide === 'p1' ? fighterP1 : fighterP2;
+    defenderEl.classList.add('is-hit');
+    setTimeout(() => defenderEl.classList.remove('is-hit'), 600);
+
+    battle.busy = false;
+
+    // Pasar turno: el flag skipRivalPending se consumirá en passTurn()
+    passTurn();
+  }
+  
 
     /* =========================================================
      AFINIDADES DINÁMICAS (base + personalizadas)
@@ -2164,73 +2465,70 @@
      MÓDULO 3 — INICIO DE BATALLA
      ========================================================= */
      function startBattleEngine() {
-        if (!currentMatchup || !currentMatchup.p1 || !currentMatchup.p2) {
-          toast('No hay enfrentamiento activo.', 'error');
-          return;
-        }
-        
-        
-        const p1 = currentMatchup.p1;
-        const p2 = currentMatchup.p2;
-        const stage = currentMatchup.stage;
-    
-        const p1Hp = computeHP(p1.stats.durability, p1.level || DEFAULT_LEVEL);
-        const p2Hp = computeHP(p2.stats.durability, p2.level || DEFAULT_LEVEL);
-    
-        battle = {
-          p1: { data: p1, hp: p1Hp, maxHp: p1Hp, cooldowns: [0, 0, 0], totalDamage: 0, shield: false },
-          p2: { data: p2, hp: p2Hp, maxHp: p2Hp, cooldowns: [0, 0, 0], totalDamage: 0, shield: false },
-          stage: stage || null,
-          activeSide: determineInitiative(p1, p2),
-          turn: 1,
-          round: 1,
-          log: [],
-          finished: false,
-          busy: false,
-          basicAttackLocked: 0,     // ← NUEVO: turnos restantes de bloqueo
-          basicAttackLockedBy: null // ← NUEVO: nombre del evento (para el tooltip)
-        };
-        
-
-        // === Transición de vistas ===
-        versusScreen.hidden = true;
-        tournamentView.hidden = true;                       // ← FIX: ocultar el contenedor padre
-        battleView.hidden = false;
-        document.body.classList.add('is-battling');         // ← FIX: activa el flag CSS
-        window.scrollTo(0, 0);                              // ← FIX: scroll inmediato, sin smooth
-    
-        // Fondo del escenario
-        if (stage && stage.image) {
-          battleBg.style.backgroundImage = `url("${stage.image}")`;
-          battleStageName.textContent = stage.name;
-        } else {
-          battleBg.style.backgroundImage = '';
-          battleBg.style.background = 'radial-gradient(ellipse at center, #1a1524, #0a0810 70%)';
-          battleStageName.textContent = 'Terreno Neutro';
-        }
-    
-        // Render inicial
-        renderBattleUI();
-        updateHpBar('p1');
-        updateHpBar('p2');
-        
-          // Notificar al módulo de eventos que empieza un combate
-          if (window.JJA_EventsRoulette) {
-            window.JJA_EventsRoulette.resetForBattle();
-          }
-
-        // Anunciar primer turno
-        announceTurn();
-            // Incrementar el contador individual de combates del torneo
-          [p1, p2].forEach((fighter) => {
-            const idx = roster.findIndex((s) => s.id === fighter.id);
-            if (idx >= 0) {
-              roster[idx].tournamentBattles = (roster[idx].tournamentBattles || 0) + 1;
-            }
-          });
-          saveRoster();
-        updateActionPanel();
+      if (!currentMatchup || !currentMatchup.p1 || !currentMatchup.p2) {
+        toast('No hay enfrentamiento activo.', 'error');
+        return;
       }
+  
+      const p1 = currentMatchup.p1;
+      const p2 = currentMatchup.p2;
+      const stage = currentMatchup.stage;
+  
+      const p1Hp = computeHP(p1.stats.durability, p1.level || DEFAULT_LEVEL);
+      const p2Hp = computeHP(p2.stats.durability, p2.level || DEFAULT_LEVEL);
+  
+      battle = {
+        p1: { data: p1, hp: p1Hp, maxHp: p1Hp, cooldowns: [0, 0, 0, 0, 0], totalDamage: 0, shield: false },
+        p2: { data: p2, hp: p2Hp, maxHp: p2Hp, cooldowns: [0, 0, 0, 0, 0], totalDamage: 0, shield: false },
+        stage: stage || null,
+        activeSide: determineInitiative(p1, p2),
+        turn: 1,
+        round: 1,
+        log: [],
+        finished: false,
+        busy: false,
+        basicAttackLocked: 0,
+        basicAttackLockedBy: null,
+        skipRivalPending: false
+      };
+  
+      // Incrementar contador individual de combates
+      [p1, p2].forEach((fighter) => {
+        const idx = roster.findIndex((s) => s.id === fighter.id);
+        if (idx >= 0) {
+          roster[idx].tournamentBattles = (roster[idx].tournamentBattles || 0) + 1;
+        }
+      });
+      saveRoster();
+  
+      // Transición de vistas
+      versusScreen.hidden = true;
+      tournamentView.hidden = true;
+      battleView.hidden = false;
+      document.body.classList.add('is-battling');
+      window.scrollTo(0, 0);
+  
+      // Fondo del escenario
+      if (stage && stage.image) {
+        battleBg.style.backgroundImage = `url("${stage.image}")`;
+        battleStageName.textContent = stage.name;
+      } else {
+        battleBg.style.backgroundImage = '';
+        battleBg.style.background = 'radial-gradient(ellipse at center, #1a1524, #0a0810 70%)';
+        battleStageName.textContent = 'Terreno Neutro';
+      }
+  
+      // Reset del módulo de eventos
+      if (window.JJA_EventsRoulette) {
+        window.JJA_EventsRoulette.resetForBattle();
+      }
+  
+      renderBattleUI();
+      updateHpBar('p1');
+      updateHpBar('p2');
+      announceTurn();
+      updateActionPanel();
+    }
     
       function determineInitiative(p1, p2) {
         const s1 = SPD_INITIATIVE[p1.stats.speed] || 3;
@@ -2818,33 +3116,53 @@
         const previous = battle.activeSide;
         const next = previous === 'p1' ? 'p2' : 'p1';
     
-        // Avanzar turno
+        // =========================================================
+         // STUN: si el jugador entrante tiene un "skip" pendiente,
+         // se salta su turno y vuelve a jugar el anterior.
+         // =========================================================
+        if (battle.skipRivalPending && next !== previous) {
+          battle.skipRivalPending = false;
+    
+          const skipped = battle[next];
+          pushLog({
+            side: next,
+            type: '',
+            html: `⏳ <strong>${escapeHtml(skipped.data.standName)}</strong> pierde su turno por el impacto.`
+          });
+    
+          // Marcar el fighter aturdido visualmente
+          const skippedEl = next === 'p1' ? fighterP1 : fighterP2;
+          skippedEl.classList.add('is-defeated'); // reutilizamos como aturdimiento breve
+          setTimeout(() => {
+            if (skipped.hp > 0) skippedEl.classList.remove('is-defeated');
+          }, 700);
+    
+          // Reanudar: no cambiamos activeSide, sigue el mismo jugador
+          battle.turn += 1;
+    
+          // Tick de cooldowns del jugador que REPITE turno (baja sus CDs)
+          const repeat = battle[previous];
+          repeat.cooldowns = repeat.cooldowns.map((cd) => (cd > 0 ? cd - 1 : 0));
+    
+          renderBattleUI();
+          updateActionPanel();
+          announceTurn();
+          if (window.JJA_EventsRoulette && battle) {
+            window.JJA_EventsRoulette.maybeTriggerEvent(battle);
+          }
+          return;
+        }
+    
+        // Avanzar turno normal
         battle.activeSide = next;
         battle.turn += 1;
         if (battle.turn % 2 === 1) battle.round += 1;
     
-        // =========================================================
-         // DECREMENTO DE COOLDOWNS
-         // Se aplica al jugador QUE VA A ACTUAR AHORA (no al que acaba de jugar).
-         //
-         // Semántica por valor de `cdCurrent` (ya guardado como CD+1 al usar):
-         //   cdCurrent = 0 → disponible
-         //   cdCurrent = 1 → bloqueada (este turno propio la consume)
-         //   cdCurrent = N → bloqueada durante N turnos propios
-         //
-         // Ejemplo CD 5:
-         //   T1 uso → cdCurrent = 6
-         //   T2 inicio → 5 (bloq.) · T3 inicio → 4 · T4 inicio → 3
-         //   T5 inicio → 2 · T6 inicio → 1 · T7 inicio → 0 (disponible)
-         //   → Esperó exactamente 5 turnos propios. ✓
-         // =========================================================
+        // Decremento de cooldowns del JUGADOR QUE VA A ACTUAR AHORA
         const incoming = battle[next];
-        incoming.cooldowns = incoming.cooldowns.map((cd) => {
-          const n = Number(cd) || 0;
-          return n > 0 ? n - 1 : 0;
-        });
+        incoming.cooldowns = incoming.cooldowns.map((cd) => (cd > 0 ? cd - 1 : 0));
     
-        // Consumir bloqueo de Ataque Básico (Silencio de Hierro)
+        // Consumir bloqueo de Ataque Básico
         if ((battle.basicAttackLocked || 0) > 0) {
           battle.basicAttackLocked = Math.max(0, battle.basicAttackLocked - 1);
           if (battle.basicAttackLocked === 0) {
@@ -2857,12 +3175,10 @@
           }
         }
     
-        // Refrescar
         renderBattleUI();
         updateActionPanel();
         announceTurn();
     
-        // Evaluar evento tras el cambio de turno
         if (window.JJA_EventsRoulette && battle) {
           window.JJA_EventsRoulette.maybeTriggerEvent(battle);
         }
@@ -2887,142 +3203,173 @@
       /* =========================================================
          MÓDULO 3 — PANEL DE ACCIONES
          ========================================================= */
-      function updateActionPanel() {
-        if (!battle) return;
-    
-        if (battle.finished) {
-          turnLabel.textContent = 'Combate Finalizado';
-          turnTimer.textContent = '';
-          disableAllActions();
-          return;
+         function updateActionPanel() {
+          if (!battle) return;
+      
+          // Ref al botón de stun (se crea dinámicamente la primera vez)
+          let btnStun = document.getElementById('btnSkipRivalTurn');
+      
+          if (battle.finished) {
+            turnLabel.textContent = 'Combate Finalizado';
+            turnTimer.textContent = '';
+            disableAllActions();
+            if (btnStun) btnStun.disabled = true;
+            return;
+          }
+      
+          const active = battle.activeSide === 'p1' ? battle.p1 : battle.p2;
+          const defender = battle.activeSide === 'p1' ? battle.p2 : battle.p1;
+          turnLabel.textContent = `Turno de ${active.data.standName}`;
+          turnTimer.textContent = `Ronda ${toRoman(battle.round)}`;
+      
+          // ---------- ATAQUE BÁSICO ----------
+          const isBasicLocked = (battle.basicAttackLocked || 0) > 0;
+      
+          if (isBasicLocked) {
+            btnBasicAttack.disabled = true;
+            btnBasicAttack.classList.add('is-locked');
+            btnBasicAttack.title = '¡Bloqueado por Silencio de Hierro! Solo puedes usar habilidades.';
+            basicAttackMeta.innerHTML =
+              `<span style="color:var(--danger-hi);font-weight:700;">⛓ Bloqueado (${battle.basicAttackLocked})</span>`;
+          } else {
+            btnBasicAttack.disabled = false;
+            btnBasicAttack.classList.remove('is-locked');
+            btnBasicAttack.removeAttribute('title');
+      
+            const basicProj = computeProjectedDamage(
+              { ...active.data, __fighterRef: active },
+              defender.data,
+              { damage: BASIC_ATTACK_BASE + (PWR_BASIC_BONUS[active.data.stats.power] || 0) },
+              'damage'
+            );
+      
+            if (basicProj.pct > 0) {
+              basicAttackMeta.innerHTML = `${basicProj.damage} daño <span style="color:var(--ready-hi);font-weight:700;">(+${basicProj.pct}%)</span>`;
+            } else if (basicProj.pct < 0) {
+              basicAttackMeta.innerHTML = `${basicProj.damage} daño <span style="color:#ff8a70;font-weight:700;">(${basicProj.pct}%)</span>`;
+            } else {
+              basicAttackMeta.textContent = `${basicProj.damage} daño`;
+            }
+          }
+      
+          // ---------- HABILIDADES DINÁMICAS (1 a 5) ----------
+          const skillBtns  = [skillBtn0, skillBtn1, skillBtn2, skillBtn3, skillBtn4];
+          const skillNames = [skillName0, skillName1, skillName2, skillName3, skillName4];
+          const skillMetas = [skillMeta0, skillMeta1, skillMeta2, skillMeta3, skillMeta4];
+      
+          const abilities = active.data.abilities || [];
+      
+          skillBtns.forEach((btn, idx) => {
+            if (!btn) return;
+      
+            const ability = abilities[idx];
+            const nameEl = skillNames[idx];
+            const metaEl = skillMetas[idx];
+      
+            // Slot sin habilidad → ocultar
+            if (!ability || !ability.name) {
+              btn.hidden = true;
+              btn.disabled = true;
+              return;
+            }
+      
+            btn.hidden = false;
+            if (nameEl) nameEl.textContent = ability.name;
+      
+            const cd = active.cooldowns[idx] || 0;
+            if (cd > 0) {
+              btn.disabled = true;
+              if (metaEl) {
+                metaEl.innerHTML = `⏳ Recarga: ${cd} turno${cd > 1 ? 's' : ''}`;
+                metaEl.classList.add('action-btn__meta--cd');
+                metaEl.classList.remove('action-btn__meta--ready');
+              }
+              let badge = btn.querySelector('.action-btn__cd-badge');
+              if (!badge) {
+                badge = document.createElement('span');
+                badge.className = 'action-btn__cd-badge';
+                btn.appendChild(badge);
+              }
+              badge.textContent = cd;
+              badge.dataset.cd = String(cd);
+            } else {
+              btn.disabled = false;
+              const kind = ability.type || 'damage';
+              const acc = clampNumber(ability.accuracy, 10, 100, 100);
+      
+              if (metaEl) {
+                if (kind === 'heal') {
+                  const estHeal = Math.round(active.maxHp * 0.22);
+                  metaEl.innerHTML = `<span style="color:var(--ready-hi);font-weight:700;">+${estHeal} HP · Curación</span>`;
+                } else if (kind === 'shield') {
+                  metaEl.innerHTML = `<span style="color:var(--accent-cyan);font-weight:700;">Defensa 50%</span>`;
+                } else {
+                  const proj = computeProjectedDamage(
+                    { ...active.data, __fighterRef: active },
+                    defender.data,
+                    ability,
+                    'damage'
+                  );
+                  if (proj.pct > 0) {
+                    metaEl.innerHTML = `${proj.damage} daño <span style="color:var(--ready-hi);font-weight:700;">(+${proj.pct}%)</span> · ${acc}% Prec.`;
+                  } else if (proj.pct < 0) {
+                    metaEl.innerHTML = `${proj.damage} daño <span style="color:#ff8a70;font-weight:700;">(${proj.pct}%)</span> · ${acc}% Prec.`;
+                  } else {
+                    metaEl.innerHTML = `${proj.damage} daño · ${acc}% Prec.`;
+                  }
+                }
+                metaEl.classList.remove('action-btn__meta--cd');
+                metaEl.classList.add('action-btn__meta--ready');
+              }
+      
+              const badge = btn.querySelector('.action-btn__cd-badge');
+              if (badge) badge.remove();
+            }
+      
+            // Rebind handlers
+            btn.onclick = () => performAction(battle.activeSide, 'skill', idx);
+            btn.onmouseenter = () => showSkillTooltip(btn, ability, idx);
+            btn.onmouseleave = () => hideSkillTooltip();
+            btn.onfocus = () => showSkillTooltip(btn, ability, idx);
+            btn.onblur = () => hideSkillTooltip();
+      
+            if (cd > 0) {
+              btn.onmouseenter = null;
+              btn.onmouseleave = null;
+              btn.onfocus = null;
+              btn.onblur = null;
+            }
+          });
+      
+          // Rebind del ataque básico
+          btnBasicAttack.onclick = () => performAction(battle.activeSide, 'basic');
+      
+          // ---------- BOTÓN "SALTAR TURNO RIVAL" (STUN) ----------
+          if (!btnStun) {
+            btnStun = document.createElement('button');
+            btnStun.type = 'button';
+            btnStun.id = 'btnSkipRivalTurn';
+            btnStun.className = 'action-btn action-btn--utility';
+            btnStun.innerHTML = `
+              <span class="action-btn__icon">⏳</span>
+              <span class="action-btn__name">Saltar Turno Rival</span>
+              <span class="action-btn__meta">El rival pierde su próximo turno</span>
+            `;
+            const grid = document.querySelector('.battle-actions__grid');
+            if (grid) grid.appendChild(btnStun);
+          }
+      
+          // Habilitar solo si no hay stun pendiente y el combate no está bloqueado
+          btnStun.disabled = !!battle.skipRivalPending;
+          btnStun.onclick = () => performSkipRivalTurn(battle.activeSide);
         }
     
-        const active = battle.activeSide === 'p1' ? battle.p1 : battle.p2;
-        turnLabel.textContent = `Turno de ${active.data.standName}`;
-        turnTimer.textContent = `Ronda ${toRoman(battle.round)}`;
-    
-            // Ataque básico — sujeto a bloqueo por eventos
-    const isBasicLocked = (battle.basicAttackLocked || 0) > 0;
-
-    if (isBasicLocked) {
-      btnBasicAttack.disabled = true;
-      btnBasicAttack.classList.add('is-locked');
-      btnBasicAttack.title = '¡Bloqueado por Silencio de Hierro! Solo puedes usar habilidades.';
-      basicAttackMeta.innerHTML =
-        `<span style="color:var(--danger-hi);font-weight:700;">⛓ Bloqueado (${battle.basicAttackLocked} turno${battle.basicAttackLocked > 1 ? 's' : ''})</span>`;
-    } else {
-      btnBasicAttack.disabled = false;
-      btnBasicAttack.classList.remove('is-locked');
-      btnBasicAttack.removeAttribute('title');
-
-      const defender = battle[battle.activeSide === 'p1' ? 'p2' : 'p1'];
-
-      // Daño proyectado del básico
-      const basicProj = computeProjectedDamage(
-        { ...active.data, __fighterRef: active },
-        defender.data,
-        { damage: BASIC_ATTACK_BASE + (PWR_BASIC_BONUS[active.data.stats.power] || 0) },
-        'damage'
-      );
-
-      if (basicProj.pct > 0) {
-        basicAttackMeta.innerHTML = `${basicProj.damage} daño <span style="color:var(--ready-hi);font-weight:700;">(+${basicProj.pct}%)</span>`;
-      } else if (basicProj.pct < 0) {
-        basicAttackMeta.innerHTML = `${basicProj.damage} daño <span style="color:#ff8a70;font-weight:700;">(${basicProj.pct}%)</span>`;
-      } else {
-        basicAttackMeta.textContent = `${basicProj.damage} daño`;
-      }
-    }
-    
-        // Habilidades
-        const skillBtns = [skillBtn0, skillBtn1, skillBtn2];
-        const skillNames = [skillName0, skillName1, skillName2];
-        const skillMetas = [skillMeta0, skillMeta1, skillMeta2];
-    
-        active.data.abilities.forEach((ability, idx) => {
-          if (idx > 2) return;
-          const btn = skillBtns[idx];
-          const nameEl = skillNames[idx];
-          const metaEl = skillMetas[idx];
-    
-          nameEl.textContent = ability.name || `Habilidad ${idx + 1}`;
-    
-          const cd = active.cooldowns[idx] || 0;
-          if (cd > 0) {
-            btn.disabled = true;
-            metaEl.innerHTML = `⏳ Recarga: ${cd} turno${cd > 1 ? 's' : ''}`;
-            metaEl.classList.add('action-btn__meta--cd');
-            metaEl.classList.remove('action-btn__meta--ready');
-            // Badge
-            let badge = btn.querySelector('.action-btn__cd-badge');
-            if (!badge) {
-              badge = document.createElement('span');
-              badge.className = 'action-btn__cd-badge';
-              btn.appendChild(badge);
-            }
-            badge.textContent = cd;
-          } else {
-            btn.disabled = false;
-            const kind = ability.type || 'damage';
-            const acc = clampNumber(ability.accuracy, 10, 100, 100);
-    
-            if (kind === 'heal') {
-              const healPct = 0.22;
-              const estHeal = Math.round(active.maxHp * healPct);
-              metaEl.innerHTML = `<span style="color:var(--ready-hi);font-weight:700;">+${estHeal} HP · Curación</span>`;
-            } else if (kind === 'shield') {
-              metaEl.innerHTML = `<span style="color:var(--accent-cyan);font-weight:700;">Defensa 50%</span>`;
-            } else {
-              // Daño proyectado con terreno
-              const defender = battle[battle.activeSide === 'p1' ? 'p2' : 'p1'];
-              const proj = computeProjectedDamage(
-                { ...active.data, __fighterRef: active },
-                defender.data,
-                ability,
-                'damage'
-              );
-    
-              if (proj.pct > 0) {
-                metaEl.innerHTML = `${proj.damage} daño <span style="color:var(--ready-hi);font-weight:700;">(+${proj.pct}%)</span> · ${acc}% Prec.`;
-              } else if (proj.pct < 0) {
-                metaEl.innerHTML = `${proj.damage} daño <span style="color:#ff8a70;font-weight:700;">(${proj.pct}%)</span> · ${acc}% Prec.`;
-              } else {
-                metaEl.innerHTML = `${proj.damage} daño · ${acc}% Prec.`;
-              }
-            }
-    
-            metaEl.classList.remove('action-btn__meta--cd');
-            metaEl.classList.add('action-btn__meta--ready');
-            const badge = btn.querySelector('.action-btn__cd-badge');
-            if (badge) badge.remove();
-          }
-    
-          // Rebind del handler (para no acumular listeners)
-          btn.onclick = () => performAction(battle.activeSide, 'skill', idx);
-
-          // Rebinding de tooltips (con datos del Stand activo actual)
-          btn.onmouseenter = () => showSkillTooltip(btn, ability, idx);
-          btn.onmouseleave = () => hideSkillTooltip();
-          btn.onfocus = () => showSkillTooltip(btn, ability, idx);
-          btn.onblur = () => hideSkillTooltip();
-
-          // Si la habilidad está en cooldown, no mostramos tooltip de datos falsos
-          if (cd > 0) {
-            btn.onmouseenter = null;
-            btn.onmouseleave = null;
-            btn.onfocus = null;
-            btn.onblur = null;
-          }
-        });
-    
-        // Rebind ataque básico
-        btnBasicAttack.onclick = () => performAction(battle.activeSide, 'basic');
-      }
-    
-      function disableAllActions() {
-        btnBasicAttack.disabled = true;
-        [skillBtn0, skillBtn1, skillBtn2].forEach((b) => { b.disabled = true; });
-      }
+        function disableAllActions() {
+          const allBtns = [btnBasicAttack, skillBtn0, skillBtn1, skillBtn2, skillBtn3, skillBtn4];
+          allBtns.forEach((b) => {
+            if (b) b.disabled = true;
+          });
+        }
     
       /* =========================================================
          MÓDULO 3 — LOG
@@ -3050,12 +3397,15 @@
             // Marcar al perdedor como derrotado (solo Battle Royale)
             markDefeated(loser.data.id);
 
+            // Marcar al ganador (solo Battle Royale)
+            markWinner(winner.data.id);
+
             // Persistir el HP con el que sobrevivió el ganador
-              const winnerIdx = roster.findIndex((s) => s.id === winner.data.id);
-              if (winnerIdx >= 0) {
-                roster[winnerIdx].lastHp = winner.hp;
-              }
-              saveRoster();
+            const winnerIdx = roster.findIndex((s) => s.id === winner.data.id);
+            if (winnerIdx >= 0) {
+              roster[winnerIdx].lastHp = winner.hp;
+            }
+            saveRoster();
         
             victoryKicker.textContent = `K.O. · ${loser.data.standName} derrotado`;
             victoryTitle.textContent = '¡VICTORIA!';
@@ -3087,6 +3437,16 @@
         
             victoryBackdrop.hidden = false;
           }
+              // Actualizar el estado del torneo (puede cambiar de fase)
+            if (currentMode === 'royale') {
+              tournamentRound++;
+              saveMode();
+              updateTournamentStatus();
+              renderGallery();
+              checkTournamentEnd();
+              updateTournamentStatus();
+              renderGallery();
+            }
     
       function closeVictoryModal() {
         victoryBackdrop.hidden = true;
@@ -3246,14 +3606,24 @@
   /* =========================================================
      ARQUETIPO RÁPIDO (defaults balanceados)
      ========================================================= */
-  const ARCHETYPE_ABILITY_POOL = [
-    { name: 'Golpe Veloz',      type: 'damage', damage: 32, cooldown: 1, accuracy: 100, description: 'Ráfaga de golpes a velocidad luz.' },
-    { name: 'Contraataque',     type: 'damage', damage: 40, cooldown: 2, accuracy: 95,  description: 'Aprovecha el descuido del rival.' },
-    { name: 'Segundo Aliento',  type: 'heal',   damage: 15, cooldown: 3, accuracy: 100, description: 'Recupera fuerzas en pleno combate.' },
-    { name: 'Guardia de Hierro',type: 'shield', damage: 15, cooldown: 2, accuracy: 100, description: 'Endurece la defensa contra el próximo golpe.' },
-    { name: 'Onda Cortante',    type: 'damage', damage: 45, cooldown: 3, accuracy: 90,  description: 'Corte de energía a distancia.' },
-    { name: 'Pulso Sanador',    type: 'heal',   damage: 15, cooldown: 3, accuracy: 100, description: 'Una onda recorre el Stand y lo repara.' }
-  ];
+     const ARCHETYPE_ABILITY_POOL = [
+      { name: 'Golpe Veloz',       type: 'damage', damage: 32, cooldown: 1, accuracy: 100, description: 'Ráfaga de golpes a velocidad luz que desorienta al rival.' },
+      { name: 'Contraataque',      type: 'damage', damage: 40, cooldown: 2, accuracy: 95,  description: 'Aprovecha el descuido del enemigo para devolverle el impacto.' },
+      { name: 'Segundo Aliento',   type: 'heal',   damage: 15, cooldown: 3, accuracy: 100, description: 'Recupera fuerzas en pleno combate cerrando las heridas.' },
+      { name: 'Guardia de Hierro', type: 'shield', damage: 15, cooldown: 2, accuracy: 100, description: 'Endurece la defensa absorbiendo el próximo golpe.' },
+      { name: 'Onda Cortante',     type: 'damage', damage: 45, cooldown: 3, accuracy: 90,  description: 'Corte de energía concentrada que atraviesa la guardia.' },
+      { name: 'Pulso Sanador',     type: 'heal',   damage: 15, cooldown: 3, accuracy: 100, description: 'Una onda recorre el Stand y recompone su estructura.' },
+      { name: 'Rugido de Guerra',  type: 'shield', damage: 15, cooldown: 3, accuracy: 100, description: 'El grito del artista fortalece al Stand con una barrera sónica.' }
+    ];
+  
+    const ARCHETYPE_CRIES = [
+      '¡ORA ORA ORA!',
+      '¡MUDA MUDA MUDA!',
+      '¡DORARARA!',
+      '¡WRYYYY!',
+      '¡ARI ARI ARI!',
+      '¡YO, DIO!'
+    ];
 
   function pickRandomAbilities() {
     const pool = [...ARCHETYPE_ABILITY_POOL];
@@ -3279,6 +3649,12 @@
     const affSel = col.querySelector('.dual-affinity');
     if (affSel) affSel.value = affinities[Math.floor(Math.random() * affinities.length)];
 
+    // Grito de batalla genérico
+    const cryEl = col.querySelector('.dual-cry');
+    if (cryEl && !cryEl.value) {
+      cryEl.value = ARCHETYPE_CRIES[Math.floor(Math.random() * ARCHETYPE_CRIES.length)];
+    }
+
     // Habilidades balanceadas
     const abilities = pickRandomAbilities();
     col.querySelectorAll('.dual-ability').forEach((row, i) => {
@@ -3289,6 +3665,8 @@
       row.querySelector('.dual-ab-damage').value = ab.damage;
       row.querySelector('.dual-ab-cd').value = ab.cooldown;
       row.querySelector('.dual-ab-acc').value = ab.accuracy;
+      const descEl = row.querySelector('.dual-ab-desc');
+      if (descEl) descEl.value = ab.description || '';
     });
 
     // Nombres placeholder para que no queden vacíos
@@ -3311,6 +3689,14 @@
     ['A', 'B'].forEach((side) => {
       const col = modal.querySelector(`.dual-col[data-dual="${side}"]`);
       if (!col) return;
+  
+      // Grito de batalla
+      const cryEl = col.querySelector('.dual-cry');
+      if (cryEl) cryEl.value = '';
+  
+      // Descripciones de habilidades
+      col.querySelectorAll('.dual-ab-desc').forEach((d) => { d.value = ''; });
+      
 
       col.querySelectorAll('input[type="text"]').forEach((i) => { i.value = ''; });
       col.querySelectorAll('input[type="number"]').forEach((i) => {
@@ -3351,35 +3737,38 @@
   /* =========================================================
      RECOLECCIÓN DE UNA COLUMNA
      ========================================================= */
-  function collectDualColumn(side) {
-    const col = document.querySelector(`.dual-col[data-dual="${side}"]`);
-    if (!col) return null;
-
-    const stats = {};
-    col.querySelectorAll('.dual-stat').forEach((sel) => {
-      stats[sel.dataset.stat] = sel.value;
-    });
-
-    const abilities = Array.from(col.querySelectorAll('.dual-ability')).map((row) => ({
-      name: (row.querySelector('.dual-ab-name').value || '').trim(),
-      type: row.querySelector('.dual-ab-type').value,
-      damage: clampNumber(row.querySelector('.dual-ab-damage').value, 15, 60, 30),
-      cooldown: clampNumber(row.querySelector('.dual-ab-cd').value, 0, 5, 1),
-      accuracy: clampNumber(row.querySelector('.dual-ab-acc').value, 10, 100, 100),
-      description: ''
-    }));
-
-    return {
-      artistName: (col.querySelector('.dual-artist').value || '').trim(),
-      standName: (col.querySelector('.dual-name').value || '').trim(),
-      affinity: col.querySelector('.dual-affinity').value,
-      battleCry: '',
-      stats,
-      abilities,
-      image: dualState[side].imageBase64 || null,
-      imageMime: dualState[side].imageMime || null
-    };
-  }
+     function collectDualColumn(side) {
+      const col = document.querySelector(`.dual-col[data-dual="${side}"]`);
+      if (!col) return null;
+  
+      const stats = {};
+      col.querySelectorAll('.dual-stat').forEach((sel) => {
+        stats[sel.dataset.stat] = sel.value;
+      });
+  
+      const rawAbilities = Array.from(col.querySelectorAll('.dual-ability')).map((row) => ({
+        name: (row.querySelector('.dual-ab-name').value || '').trim(),
+        type: row.querySelector('.dual-ab-type').value,
+        damage: clampNumber(row.querySelector('.dual-ab-damage').value, 15, 60, 30),
+        cooldown: clampNumber(row.querySelector('.dual-ab-cd').value, 0, 5, 1),
+        accuracy: clampNumber(row.querySelector('.dual-ab-acc').value, 10, 100, 100),
+        description: (row.querySelector('.dual-ab-desc')?.value || '').trim()
+      }));
+  
+      // Solo habilidades con nombre
+      const abilities = rawAbilities.filter((a) => a.name.length > 0);
+  
+      return {
+        artistName: (col.querySelector('.dual-artist').value || '').trim(),
+        standName: (col.querySelector('.dual-name').value || '').trim(),
+        affinity: col.querySelector('.dual-affinity').value,
+        battleCry: (col.querySelector('.dual-cry')?.value || '').trim(),
+        stats,
+        abilities,
+        image: dualState[side].imageBase64 || null,
+        imageMime: dualState[side].imageMime || null
+      };
+    }
 
   /* =========================================================
      GUARDAR AMBOS

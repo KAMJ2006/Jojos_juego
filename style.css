@@ -3808,8 +3808,46 @@
   .dual-ability {
     display: grid;
     grid-template-columns: 1.4fr 1fr 0.8fr 0.6fr 0.8fr;
+    grid-template-areas:
+      "name type damage cd acc"
+      "desc desc desc desc desc";
     gap: 6px;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px dashed rgba(230, 198, 106, 0.12);
+  }
+  
+  .dual-ability:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+  
+  .dual-ability .dual-ab-name   { grid-area: name; }
+  .dual-ability .dual-ab-type   { grid-area: type; }
+  .dual-ability .dual-ab-damage { grid-area: damage; }
+  .dual-ability .dual-ab-cd     { grid-area: cd; }
+  .dual-ability .dual-ab-acc    { grid-area: acc; }
+  .dual-ability .dual-ab-desc   { grid-area: desc; }
+  
+  .dual-ability .dual-ab-desc {
+    padding: 6px 10px;
+    background: rgba(10, 8, 16, 0.7);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    color: var(--ink-0);
+    font-size: 0.78rem;
+    font-style: italic;
+  }
+  
+  @media (max-width: 900px) {
+    .dual-ability {
+      grid-template-columns: 1fr 1fr;
+      grid-template-areas:
+        "name name"
+        "type damage"
+        "cd acc"
+        "desc desc";
+    }
   }
   
   .dual-ability input,
@@ -3854,6 +3892,237 @@
     .dual-col { max-height: none; }
     .dual-stats { grid-template-columns: repeat(3, 1fr); }
     .dual-ability { grid-template-columns: 1fr 1fr; }
+  }
+
+  /* ============================================================
+   ESTADOS DEL BATTLE ROYALE — WAITING / WINNER / RETIRED
+   ============================================================ */
+
+/* --- Borde dorado sutil para los ganadores --- */
+.stand-card.is-winner {
+  border-color: var(--gold-2);
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.65),
+    0 0 0 1px var(--gold-2) inset,
+    0 0 22px rgba(230, 198, 106, 0.35);
+}
+
+.stand-card.is-winner::before {
+  opacity: 0.6;
+}
+
+.stand-card.is-winner .stand-card__frame {
+  border-bottom-color: var(--gold-1);
+}
+
+/* --- Etiqueta WINNER en la tarjeta --- */
+.stand-card__winner {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%) rotate(-4deg);
+  z-index: 3;
+  padding: 3px 12px;
+  font-family: var(--font-display);
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #1a1206;
+  background: linear-gradient(180deg, var(--gold-0), var(--gold-2));
+  border: 1px solid #fff8d8;
+  border-radius: 4px;
+  box-shadow:
+    0 2px 12px rgba(230, 198, 106, 0.85),
+    0 0 22px rgba(230, 198, 106, 0.5);
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.6);
+  pointer-events: none;
+  animation: winnerPulse 2s ease-in-out infinite;
+}
+
+@keyframes winnerPulse {
+  0%, 100% { box-shadow: 0 2px 12px rgba(230, 198, 106, 0.85), 0 0 22px rgba(230, 198, 106, 0.5); }
+  50%      { box-shadow: 0 2px 16px rgba(230, 198, 106, 1), 0 0 34px rgba(230, 198, 106, 0.75); }
+}
+
+/* --- Tarjeta ganadora: sin atenuar --- */
+.stand-card.is-winner .stand-card__image {
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.7)) drop-shadow(0 0 12px rgba(230, 198, 106, 0.35));
+}
+
+/* --- Etiqueta WAITING (opcional, sutil) --- */
+.stand-card__waiting {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  padding: 2px 10px;
+  font-family: var(--font-display);
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  background: rgba(10, 8, 16, 0.7);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  pointer-events: none;
+  opacity: 0.9;
+}
+
+/* ============================================================
+   BARRA DE ESTADO DE FASES DEL TORNEO
+   ============================================================ */
+.tournament-status__phase {
+  grid-column: 1 / -1;
+  padding: 8px 12px;
+  text-align: center;
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: rgba(10, 8, 16, 0.55);
+  color: var(--ink-1);
+}
+
+.tournament-status__phase[data-phase="waiting"] {
+  color: var(--accent-cyan);
+  border-color: rgba(79, 212, 212, 0.5);
+  background: rgba(79, 212, 212, 0.08);
+}
+
+.tournament-status__phase[data-phase="winners"] {
+  color: var(--gold-0);
+  border-color: var(--gold-2);
+  background: linear-gradient(180deg, rgba(230, 198, 106, 0.18), rgba(230, 198, 106, 0.05));
+  box-shadow: 0 0 16px var(--gold-shadow);
+  animation: winnerPulse 2s ease-in-out infinite;
+}
+
+.tournament-status__phase[data-phase="champion"] {
+  color: #0b1a10;
+  background: linear-gradient(180deg, var(--gold-0), var(--gold-2));
+  border-color: #fff8d8;
+  box-shadow: 0 0 24px rgba(230, 198, 106, 0.85);
+  animation: winnerPulse 1.4s ease-in-out infinite;
+}
+
+/* ============================================================
+   BOTÓN "INICIAR RONDA DE GANADORES"
+   ============================================================ */
+.btn--winners-round {
+  background: linear-gradient(180deg, var(--gold-0), var(--gold-2));
+  color: #1a1206;
+  border-color: #fff8d8;
+  box-shadow: 0 4px 18px rgba(230, 198, 106, 0.55), 0 0 30px rgba(230, 198, 106, 0.35);
+  animation: winnerPulse 1.6s ease-in-out infinite;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+}
+
+.btn--winners-round:hover {
+  background: linear-gradient(180deg, #fff8d8, var(--gold-1));
+  box-shadow: 0 6px 26px rgba(230, 198, 106, 0.85), 0 0 44px rgba(230, 198, 106, 0.5);
+}
+
+/* ============================================================
+   HABILIDADES OPCIONALES (IV y V)
+   ============================================================ */
+   .ability-block--optional {
+    opacity: 0.92;
+    border-left-color: var(--gold-3);
+    background: rgba(230, 198, 106, 0.02);
+  }
+  
+  .ability-block--optional.is-empty {
+    opacity: 0.55;
+  }
+  
+  .ability-block__tag {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 8px;
+    font-family: var(--font-body);
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: rgba(10, 8, 16, 0.5);
+  }
+  
+  .dual-ability--optional {
+    opacity: 0.95;
+  }
+  
+  /* ============================================================
+     GRID DE BOTONES DE ACCIÓN — SOPORTA 1 A 5 HABILIDADES + BÁSICO
+     ============================================================ */
+  .battle-actions__grid {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+  
+  /* Cuando hay muchas habilidades, permitimos 2 columnas cómodas en desktop */
+  @media (min-width: 900px) {
+    .battle-actions__grid {
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    }
+  }
+  
+  /* ============================================================
+     BOTÓN "SALTAR TURNO RIVAL"
+     ============================================================ */
+  .action-btn--utility {
+    grid-column: 1 / -1;
+    background: linear-gradient(180deg, rgba(79, 212, 212, 0.18), rgba(79, 212, 212, 0.05));
+    border-color: rgba(79, 212, 212, 0.6);
+    color: #d6f5f5;
+  }
+  
+  .action-btn--utility:hover:not(:disabled) {
+    background: linear-gradient(180deg, rgba(79, 212, 212, 0.32), rgba(79, 212, 212, 0.1));
+    border-color: var(--accent-cyan);
+    box-shadow: 0 6px 18px rgba(79, 212, 212, 0.35), 0 0 20px rgba(79, 212, 212, 0.28);
+  }
+  
+  .action-btn--utility .action-btn__icon {
+    color: var(--accent-cyan);
+  }
+  
+  /* ============================================================
+     FIX: BADGE WAITING NO SE SOLAPA CON AFINIDAD
+     ============================================================ */
+  .stand-card__waiting,
+  .stand-card__winner,
+  .stand-card__retired {
+    /* Los tres badges comparten fila central superior; afinidad va a la izquierda */
+  }
+  
+  /* Afinidad arriba-izquierda intacta */
+  .stand-card__affinity {
+    top: 10px;
+    left: 10px;
+  }
+  
+  /* Badges de estado arriba-derecha */
+  .stand-card__waiting,
+  .stand-card__winner,
+  .stand-card__retired {
+    top: 10px;
+    right: 10px;
+    left: auto;
+    transform: rotate(0deg);
+    transform-origin: center;
+  }
+  
+  .stand-card__winner {
+    transform: rotate(-3deg);
   }
 
   /* ===== UTILIDADES ===== */
