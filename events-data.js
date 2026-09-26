@@ -359,6 +359,81 @@
   }
 
     /* =========================================================
+     NORMALIZACIÓN DE ARENAS — Multiafinidad
+     Soporta:
+     - favorableAffinities: [{ affinity, boostPct }] o ['Fuego', ...]
+     - unfavorableAffinities: [{ affinity, penaltyPct }] o ['Hielo', ...]
+     - Retrocompatibilidad: { affinity: 'Fuego' } → favorable único 15%
+     - Nuevo: { affinity: 'Fuego', penalizedAffinity: 'Hielo' }
+     Devuelve siempre un objeto con:
+       favorableAffinities: [{ affinity, boostPct }]
+       unfavorableAffinities: [{ affinity, penaltyPct }]
+     ========================================================= */
+     function normalizeArena(stage) {
+      if (!stage || typeof stage !== 'object') return null;
+  
+      const DEFAULT_PCT = 15;
+  
+      // Helper: convierte un arreglo mixto (strings u objetos) a formato canónico
+      const mapList = (list, valueKey, defaultPct) => {
+        if (!Array.isArray(list)) return [];
+        const out = [];
+        for (const item of list) {
+          if (!item) continue;
+          if (typeof item === 'string') {
+            out.push({ affinity: item.trim(), [valueKey]: defaultPct });
+          } else if (typeof item === 'object' && item.affinity) {
+            const pct = Number(item[valueKey]);
+            out.push({
+              affinity: String(item.affinity).trim(),
+              [valueKey]: Number.isFinite(pct) ? pct : defaultPct
+            });
+          }
+        }
+        return out.filter((e) => e.affinity.length > 0);
+      };
+  
+      let favorable = [];
+      let unfavorable = [];
+  
+      // 1) Nuevo formato explícito
+      if (Array.isArray(stage.favorableAffinities)) {
+        favorable = mapList(stage.favorableAffinities, 'boostPct', DEFAULT_PCT);
+      }
+      if (Array.isArray(stage.unfavorableAffinities)) {
+        unfavorable = mapList(stage.unfavorableAffinities, 'penaltyPct', DEFAULT_PCT);
+      }
+  
+      // 2) Retrocompatibilidad: campo clásico "affinity"
+      if (stage.affinity && favorable.length === 0) {
+        favorable.push({ affinity: String(stage.affinity).trim(), boostPct: DEFAULT_PCT });
+      }
+      // Retrocompatibilidad: campo "penalizedAffinity" clásico
+      if (stage.penalizedAffinity && unfavorable.length === 0) {
+        unfavorable.push({ affinity: String(stage.penalizedAffinity).trim(), penaltyPct: DEFAULT_PCT });
+      }
+  
+      // 3) Eliminar duplicados (primero gana)
+      const dedupe = (list, key) => {
+        const seen = new Set();
+        return list.filter((item) => {
+          const k = item.affinity.toLowerCase();
+          if (seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        });
+      };
+      favorable = dedupe(favorable, 'boostPct');
+      unfavorable = dedupe(unfavorable, 'penaltyPct');
+  
+      return {
+        ...stage,
+        favorableAffinities: favorable,
+        unfavorableAffinities: unfavorable
+      };
+    }
+
+    /* =========================================================
        EXPORT
        ========================================================= */
        global.JJA_EventsData = {
@@ -369,7 +444,8 @@
         pickRandomEvent,
         getWeightedEventPool,
         isImageIcon,
-        resolveIconPath
+        resolveIconPath,
+        normalizeArena  // ← nueva
       };
   
   })(window);

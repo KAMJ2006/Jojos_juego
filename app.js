@@ -347,10 +347,22 @@
       if (tournamentPhaseEl) tournamentPhaseEl.hidden = true;
       return;
     }
+  // Función para descartar evoluciones Requiem y contar solo a los Stands base reales
+  const isValidContender = (s) => {
+    // Si tiene la propiedad isRequiem o el nombre dice Requiem, no cuenta como participante independiente
+    if (s.isRequiem) return false;
+    if (s.tier && s.tier.toLowerCase() === 'requiem') return false;
+    // Si es una evolución vinculada
+    if (s.parentStandId || s.isEvolution) return false;
+    return true;
+  };
 
-    const waiting = roster.filter((s) => (s.tournamentState || STAND_STATE.WAITING) === STAND_STATE.WAITING).length;
-    const winners = roster.filter((s) => s.tournamentState === STAND_STATE.WINNER).length;
-    const retired = roster.filter((s) => (s.tournamentState || (s.isDefeated ? STAND_STATE.RETIRED : STAND_STATE.WAITING)) === STAND_STATE.RETIRED).length;
+  // Filtramos la lista para quedarnos ÚNICAMENTE con los luchadores principales
+  const contenders = roster.filter(isValidContender);
+
+  const waiting = contenders.filter(s => (s.tournamentState || STAND_STATE.WAITING) === STAND_STATE.WAITING).length;
+  const winners = contenders.filter(s => s.tournamentState === STAND_STATE.WINNER).length;
+  const retired = contenders.filter(s => (s.tournamentState || (s.isDefeated ? STAND_STATE.RETIRED : STAND_STATE.WAITING)) === STAND_STATE.RETIRED).length;
 
     tournamentAliveCount.textContent = String(waiting + winners); // "en pie"
     tournamentDefeatedCount.textContent = String(retired);
@@ -378,7 +390,7 @@
 
     // Actualizar visibilidad del botón "Iniciar Ronda de Ganadores"
     if (btnWinnersRound) {
-      const shouldShow = currentMode === 'royale' && tournamentPhase === PHASE.WAITING && waiting < 2 && winners >= 2;
+      const shouldShow = currentMode === 'royale' && tournamentPhase === PHASE.WAITING && (waiting <= 1) && (winners >= 1) && (winners + waiting) >= 2;
       btnWinnersRound.hidden = !shouldShow;
     }
   }
@@ -539,24 +551,42 @@
 
   function startWinnersRound() {
     if (currentMode !== 'royale') return;
-    const winners = roster.filter((s) => s.tournamentState === STAND_STATE.WINNER).length;
-    if (winners < 2) {
-      toast('No hay suficientes ganadores para una nueva ronda.', 'error');
+  
+    // Filtrar solo los Stands reales (no evoluciones Requiem sueltas)
+    const activeRoster = roster.filter(s => !s.isRequiem && !s.isEvolution);
+  
+    // Promover con pase directo (bye) al Stand impar en espera
+    activeRoster.forEach(s => {
+      if (s.tournamentState === STAND_STATE.WAITING) {
+        s.tournamentState = STAND_STATE.WINNER;
+      }
+    });
+  
+    const contenders = activeRoster.filter(s => s.tournamentState === STAND_STATE.WINNER);
+  
+    // Si solo queda 1 participante real, es el CAMPEÓN DEFINITIVO
+    if (contenders.length === 1) {
+      if (typeof openChampionModal === 'function') {
+        openChampionModal(contenders[0]);
+      } else {
+        championBackdrop.hidden = false;
+      }
+      toast(`¡${contenders[0].standName} ES EL ÚLTIMO EN PIE!`, 'success');
       return;
     }
+  
+    if (contenders.length < 2) {
+      toast('No hay suficientes participantes para una nueva ronda.', 'error');
+      return;
+    }
+  
     tournamentPhase = PHASE.WINNERS;
     saveMode();
     updateTournamentStatus();
     renderGallery();
-
-    // Resetear cooldowns/HP para la nueva ronda: los WINNER vuelven al ruedo
-    // (conservan stats, pero ya no serán "WAITING")
-    // Si el usuario quiere que sigan como WINNER entre rondas, lo dejamos así.
-
-    toast(`¡Ronda de Ganadores! ${winners} aspirantes al título.`, 'success');
+  
+    toast(`¡Ronda de Ganadores! ${contenders.length} aspirantes al título.`, 'success');
     if (btnWinnersRound) btnWinnersRound.hidden = true;
-
-    // Al terminar esta ronda, el ganador único será campeón.
   }
 
   /* =========================================================
@@ -841,13 +871,22 @@
         ? `<p class="stand-card__cry">“${escapeHtml(stand.battleCry)}”</p>`
         : '';
   
-      card.innerHTML = `
+        card.innerHTML = `
         <div class="stand-card__frame">
-          ${stateBadge}
-          ${requiemBadge}
-          <span class="stand-card__affinity">${escapeHtml(stand.affinity)}</span>
-          <span class="stand-card__hp">${hp}</span>
+          <!-- ESQUINA SUPERIOR IZQUIERDA: afinidad + HP apilados -->
+          <div class="stand-card__top-left">
+            <span class="stand-card__affinity">${escapeHtml(stand.affinity)}</span>
+            <span class="stand-card__hp">❤️ ${hp}</span>
+          </div>
+  
+          <!-- ESQUINA SUPERIOR DERECHA: estado de torneo -->
+          ${stateBadge ? `<div class="stand-card__top-right">${stateBadge}</div>` : ''}
+  
+          <!-- SPRITE -->
           ${imgMarkup}
+  
+          <!-- PARTE INFERIOR: badge Requiem flotante -->
+          ${requiemBadge ? `<div class="stand-card__bottom">${requiemBadge}</div>` : ''}
         </div>
         <div class="stand-card__body">
           <p class="stand-card__owner">${escapeHtml(stand.artistName)}</p>
@@ -3213,25 +3252,51 @@
     
       function updateStatusChips() {
         if (!battle) return;
-        const { p1, p2, stage } = battle;
     
-        const buildChips = (fighter, side) => {
+        const { p1, p2 } = battle;
+    
+        const buildChips = (fighter) => {
           const chips = [];
-          const favored = (fighter.terrainBoost > 0) || (stage && stage.affinity === fighter.data.affinity);
-          const penalized = stage && stage.penalizedAffinity && stage.penalizedAffinity === fighter.data.affinity;
-          const pct = fighter.terrainBoost > 0 ? 30 : 15;
+          if (!fighter || !battle.stage) {
+            // Sin escenario: solo chips de estados (veneno/stun/buff/shield)
+            return chips.join('');
+          }
     
-          if (favored) {
-            chips.push(`<span class="status-chip status-chip--bonus">Bonus +${pct}%</span>`);
+          // Normalizar stage
+          let stage = battle.stage;
+          const normalizeFn = window.JJA_EventsData && window.JJA_EventsData.normalizeArena;
+          if (typeof normalizeFn === 'function') {
+            stage = normalizeFn(stage) || stage;
           }
-          if (penalized) {
-            chips.push(`<span class="status-chip status-chip--penalty">Penalización −15%</span>`);
+    
+          const affinity = String(fighter.data.affinity || '').trim().toLowerCase();
+          const favList = Array.isArray(stage.favorableAffinities) ? stage.favorableAffinities : [];
+          const unfavList = Array.isArray(stage.unfavorableAffinities) ? stage.unfavorableAffinities : [];
+    
+          // --- Chips de afinidades favorables ---
+          for (const item of favList) {
+            if (item && String(item.affinity).trim().toLowerCase() === affinity) {
+              chips.push(`<span class="status-chip status-chip--bonus">▲ +${item.boostPct}% ${escapeHtml(item.affinity)}</span>`);
+            }
           }
+          // --- Chips de afinidades desfavorables ---
+          for (const item of unfavList) {
+            if (item && String(item.affinity).trim().toLowerCase() === affinity) {
+              chips.push(`<span class="status-chip status-chip--penalty">▼ −${item.penaltyPct}% ${escapeHtml(item.affinity)}</span>`);
+            }
+          }
+    
+          // --- Boost por evento Terreno Reclamado ---
+          if (Number.isFinite(fighter.terrainBoost) && fighter.terrainBoost > 0) {
+            const pct = Math.round(fighter.terrainBoost * 100);
+            chips.push(`<span class="status-chip status-chip--bonus">▲ +${pct}% Reclamado</span>`);
+          }
+    
           return chips.join('');
         };
     
-        statusP1.innerHTML = buildChips(p1, 'p1');
-        statusP2.innerHTML = buildChips(p2, 'p2');
+        statusP1.innerHTML = buildChips(p1);
+        statusP2.innerHTML = buildChips(p2);
       }
     
       function updateHpBar(side) {
@@ -3274,34 +3339,62 @@
         return CRIT_CHANCE[precision] ?? 0.10;
       }
     
-        /* =========================================================
-     CÁLCULO DEL BONUS DE TERRENO
-     - Bonus base: +15% si afinidad del Stand == afinidad del stage
-     - Bonus de evento (Terreno Reclamado): sobrescribe a +30% vía
-       fighter.terrainBoost (0.30) mientras el combate siga activo.
+          /* =========================================================
+     MULTIPLICADOR DE TERRENO — MULTIAFINIDAD
+     ------------------------------------------------------------
+     - Si el Stand coincide con alguna favorable → +boostPct%
+     - Si coincide con alguna desfavorable → -penaltyPct%
+     - Si el evento "Terreno Reclamado" (terrainBoost) está activo,
+       su valor tiene prioridad sobre el boost base.
+     - Los porcentajes se acumulan aditivamente si hay varias coincidencias
+       (ej. favorables: Fuego 15 + Agua 10 = +25% si el Stand es ambos).
      ========================================================= */
-     function getTerrainMultiplier(stand, fighter) {
-      if (!battle || !battle.stage) {
-        // Si no hay stage, solo aplica el boost de evento si existe
-        if (fighter && typeof fighter.terrainBoost === 'number' && fighter.terrainBoost > 0) {
-          return 1 + fighter.terrainBoost;
-        }
-        return 1;
-      }
-  
-      const favored = battle.stage.affinity === stand.affinity;
-      const penalized = battle.stage.penalizedAffinity && battle.stage.penalizedAffinity === stand.affinity;
-  
-      // El boost de evento (Terreno Reclamado) sobrescribe el +15% base
-      if (fighter && typeof fighter.terrainBoost === 'number' && fighter.terrainBoost > 0) {
+  function getTerrainMultiplier(stand, fighter) {
+    if (!battle) {
+      if (fighter && Number.isFinite(fighter.terrainBoost) && fighter.terrainBoost > 0) {
         return 1 + fighter.terrainBoost;
       }
-  
-      if (favored) return 1.15;
-      if (penalized) return 0.85;
       return 1;
     }
 
+    // --- Boost por evento (Terreno Reclamado) ---
+    if (fighter && Number.isFinite(fighter.terrainBoost) && fighter.terrainBoost > 0) {
+      return 1 + fighter.terrainBoost;
+    }
+
+    // --- Sin escenario: neutro ---
+    if (!battle.stage) return 1;
+
+    // --- Normalización del escenario (retrocompatible) ---
+    let stage = battle.stage;
+    const normalizeFn = window.JJA_EventsData && window.JJA_EventsData.normalizeArena;
+    if (typeof normalizeFn === 'function') {
+      stage = normalizeFn(stage) || stage;
+    }
+
+    const affinity = String(stand.affinity || '').trim().toLowerCase();
+    if (!affinity) return 1;
+
+    const favList = Array.isArray(stage.favorableAffinities) ? stage.favorableAffinities : [];
+    const unfavList = Array.isArray(stage.unfavorableAffinities) ? stage.unfavorableAffinities : [];
+
+    let bonusPct = 0;
+    let penaltyPct = 0;
+
+    for (const item of favList) {
+      if (item && String(item.affinity).trim().toLowerCase() === affinity) {
+        bonusPct += Number(item.boostPct) || 0;
+      }
+    }
+    for (const item of unfavList) {
+      if (item && String(item.affinity).trim().toLowerCase() === affinity) {
+        penaltyPct += Number(item.penaltyPct) || 0;
+      }
+    }
+
+    const mult = 1 + (bonusPct - penaltyPct) / 100;
+    return Math.max(0.1, mult); // suelo defensivo para no anular el daño
+  }
     function hasStageBonus(stand, fighter) {
       if (!battle || !battle.stage) {
         if (fighter && typeof fighter.terrainBoost === 'number' && fighter.terrainBoost > 0) return true;
@@ -3547,14 +3640,36 @@
           const cryText = attacker.data.battleCry
             ? `<span class="log-entry__cry">“${escapeHtml(attacker.data.battleCry)}”</span>`
             : '';
-          const bonusPct = result.terrainMult
+            const bonusPct = result.terrainMult
             ? Math.round((result.terrainMult - 1) * 100)
             : 0;
+    
+          // Etiqueta de afinidades involucradas
+          let affinityDetail = '';
+          if (battle.stage && Math.abs(bonusPct) > 0) {
+            let stage = battle.stage;
+            const normalizeFn = window.JJA_EventsData && window.JJA_EventsData.normalizeArena;
+            if (typeof normalizeFn === 'function') stage = normalizeFn(stage) || stage;
+    
+            const affinity = String(attacker.data.affinity || '').trim();
+            const matchedFav = (stage.favorableAffinities || []).find(
+              (f) => String(f.affinity).trim() === affinity
+            );
+            const matchedUnfav = (stage.unfavorableAffinities || []).find(
+              (f) => String(f.affinity).trim() === affinity
+            );
+    
+            const names = [];
+            if (matchedFav) names.push(matchedFav.affinity);
+            if (matchedUnfav) names.push(matchedUnfav.affinity);
+            if (names.length) affinityDetail = ` · ${names.join(' / ')}`;
+          }
+    
           let bonusTag = '';
           if (bonusPct > 0) {
-            bonusTag = ` <span style="color:var(--ready-hi);font-weight:700;">[+${bonusPct}% Terreno]</span>`;
+            bonusTag = ` <span style="color:var(--ready-hi);font-weight:700;">[+${bonusPct}% Terreno${affinityDetail}]</span>`;
           } else if (bonusPct < 0) {
-            bonusTag = ` <span style="color:#ff8a70;font-weight:700;">[${bonusPct}% Terreno]</span>`;
+            bonusTag = ` <span style="color:#ff8a70;font-weight:700;">[${bonusPct}% Terreno${affinityDetail}]</span>`;
           }
           const critTag = result.crit
             ? ' <span style="color:var(--danger-hi);font-weight:700;">¡CRÍTICO!</span>'
@@ -4122,7 +4237,10 @@
           type: 'shield',
           html: `🛡 <strong>${escapeHtml(attacker.data.standName)}</strong> activa <em>${escapeHtml(actionName)}</em>. <strong>Barrera +${shieldValue}</strong> absorbe el próximo daño.${cryText}`
         });
-        return { skipTurn: false };
+        attacker.cooldowns[skillIndex] = (Number(ability.cooldown) || 0) + 1;
+        battle.busy = false;
+        if (typeof updateActionPanel === 'function') updateActionPanel();
+        return { skipTurn: true };
       }
 
       if (effect === 'reflect') {
@@ -4139,7 +4257,10 @@
           type: 'reflect',
           html: `✧ <strong>${escapeHtml(attacker.data.standName)}</strong> activa <em>${escapeHtml(actionName)}</em>. <strong>Coraza Reflejante</strong> devolverá 30% del daño.${cryText}`
         });
-        return { skipTurn: false };
+        attacker.cooldowns[skillIndex] = (Number(ability.cooldown) || 0) + 1;
+        battle.busy = false;
+        if (typeof updateActionPanel === 'function') updateActionPanel();
+        return { skipTurn: true };
       }
     }
 
@@ -4270,9 +4391,29 @@
         }
 
         const bonusPct = Math.round((terrainMult - 1) * 100);
+
+        let affinityDetail = '';
+        if (battle.stage && Math.abs(bonusPct) > 0) {
+          let stage = battle.stage;
+          const normalizeFn = window.JJA_EventsData && window.JJA_EventsData.normalizeArena;
+          if (typeof normalizeFn === 'function') stage = normalizeFn(stage) || stage;
+
+          const affinity = String(attacker.data.affinity || '').trim();
+          const matchedFav = (stage.favorableAffinities || []).find(
+            (f) => String(f.affinity).trim() === affinity
+          );
+          const matchedUnfav = (stage.unfavorableAffinities || []).find(
+            (f) => String(f.affinity).trim() === affinity
+          );
+          const names = [];
+          if (matchedFav) names.push(matchedFav.affinity);
+          if (matchedUnfav) names.push(matchedUnfav.affinity);
+          if (names.length) affinityDetail = ` · ${names.join(' / ')}`;
+        }
+
         let bonusTag = '';
-        if (bonusPct > 0) bonusTag = ` <span style="color:var(--ready-hi);font-weight:700;">[+${bonusPct}% Terreno]</span>`;
-        else if (bonusPct < 0) bonusTag = ` <span style="color:#ff8a70;font-weight:700;">[${bonusPct}% Terreno]</span>`;
+        if (bonusPct > 0) bonusTag = ` <span style="color:var(--ready-hi);font-weight:700;">[+${bonusPct}% Terreno${affinityDetail}]</span>`;
+        else if (bonusPct < 0) bonusTag = ` <span style="color:#ff8a70;font-weight:700;">[${bonusPct}% Terreno${affinityDetail}]</span>`;
 
         const critTag = crit ? ' <span style="color:var(--danger-hi);font-weight:700;">¡CRÍTICO!</span>' : '';
         const shieldTag = absorbed > 0 ? ` <span style="color:#9ec7e0;">(${absorbed} absorbido)</span>` : '';

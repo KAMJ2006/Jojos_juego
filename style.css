@@ -348,30 +348,12 @@
     opacity: 0.4;
   }
   
-  /* Insignia de afinidad */
-  .stand-card__affinity {
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    padding: 4px 10px;
-    font-family: var(--font-display);
-    font-size: 0.62rem;
-    font-weight: 700;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: #1a1206;
-    background: linear-gradient(180deg, var(--gold-1), var(--gold-2));
-    border-radius: 999px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-    z-index: 2;
-  }
+  
   
   /* HP flotante */
   .stand-card__hp {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    padding: 4px 10px;
+    display: inline-block;
+    padding: 3px 10px;
     font-family: var(--font-display);
     font-size: 0.68rem;
     font-weight: 700;
@@ -380,9 +362,121 @@
     background: rgba(10, 8, 16, 0.85);
     border: 1px solid var(--line-strong);
     border-radius: 999px;
-    z-index: 2;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    white-space: nowrap;
   }
-  .stand-card__hp::before { content: "♥ "; color: var(--danger-hi); }
+  .stand-card__hp::before { content: ""; color: var(--danger-hi); }
+
+  /* --- Etiqueta WAITING (opcional, sutil) --- */
+  .stand-card__waiting {
+    color: var(--ink-1);
+    background: rgba(10, 8, 16, 0.85);
+    border: 1px solid var(--line-strong);
+  }
+/* --- Etiqueta WINNER en la tarjeta --- */
+.stand-card__winner {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%) rotate(-4deg);
+  z-index: 3;
+  padding: 3px 12px;
+  font-family: var(--font-display);
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #1a1206;
+  background: linear-gradient(180deg, var(--gold-0), var(--gold-2));
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  box-shadow:
+    0 2px 12px rgba(230, 198, 106, 0.85),
+    0 0 22px rgba(230, 198, 106, 0.5);
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.6);
+  pointer-events: none;
+  animation: winnerPulse 2s ease-in-out infinite;
+}
+ /* ===== BADGE RETIRED EN TARJETA ===== */
+ .stand-card__retired {
+  color: #fff;
+  background: linear-gradient(180deg, #c8443a, #7a1e16);
+  border: 1px solid #ffb3a1;
+  box-shadow: 0 2px 12px rgba(200, 68, 58, 0.85), 0 0 22px rgba(200, 68, 58, 0.5);
+}
+
+/* --- Badge Requiem flotante en la parte inferior --- */
+.stand-card__bottom {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  width: 100%;
+}
+
+/* --- Badge en tarjeta del Stand base --- */
+.stand-card__requiem-badge {
+  display: inline-block;
+  padding: 3px 12px;
+  font-family: var(--font-display);
+  font-size: 0.58rem;
+  font-weight: 900;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #1a0d2b;
+  background: linear-gradient(180deg, #d9a5ff, #a06de0);
+  border: 1px solid #f0d9ff;
+  border-radius: 4px;
+  box-shadow: 0 0 14px rgba(217, 165, 255, 0.75), 0 0 28px rgba(160, 109, 224, 0.45);
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
+  white-space: nowrap;
+  animation: requiemBadgePulse 2.2s ease-in-out infinite;
+}
+/* --- Columna superior izquierda: afinidad + HP --- */
+.stand-card__top-left {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  pointer-events: none;
+  max-width: 55%;
+}
+.stand-card__top-right {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  pointer-events: none;
+  max-width: 45%;
+}
+/* Insignia de afinidad */
+.stand-card__affinity {
+  display: inline-block;
+  padding: 4px 10px;
+  font-family: var(--font-display);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #1a1206;
+  background: linear-gradient(180deg, var(--gold-1), var(--gold-2));
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+}
+
   
   /* --- Cuerpo de la tarjeta --- */
   .stand-card__body {
@@ -2852,27 +2946,6 @@
     text-shadow: 0 0 10px var(--gold-shadow);
   }
   
-  /* ===== BADGE RETIRED EN TARJETA ===== */
-  .stand-card__retired {
-    position: absolute;
-    top: 10px;
-    left: 50%;
-    transform: translateX(-50%) rotate(-6deg);
-    z-index: 3;
-    padding: 3px 14px;
-    font-family: var(--font-display);
-    font-size: 0.68rem;
-    font-weight: 900;
-    letter-spacing: 0.24em;
-    text-transform: uppercase;
-    color: #fff;
-    background: linear-gradient(180deg, #c8443a, #8c2418);
-    border: 1px solid #ffb3a1;
-    border-radius: 4px;
-    box-shadow: 0 2px 12px rgba(200, 68, 58, 0.55), 0 0 20px rgba(200, 68, 58, 0.35);
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
-    pointer-events: none;
-  }
   
   /* Tarjeta de Stand retirado: atenuada */
   .stand-card.is-defeated {
@@ -3915,30 +3988,6 @@
   border-bottom-color: var(--gold-1);
 }
 
-/* --- Etiqueta WINNER en la tarjeta --- */
-.stand-card__winner {
-  position: absolute;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%) rotate(-4deg);
-  z-index: 3;
-  padding: 3px 12px;
-  font-family: var(--font-display);
-  font-size: 0.62rem;
-  font-weight: 900;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: #1a1206;
-  background: linear-gradient(180deg, var(--gold-0), var(--gold-2));
-  border: 1px solid #fff8d8;
-  border-radius: 4px;
-  box-shadow:
-    0 2px 12px rgba(230, 198, 106, 0.85),
-    0 0 22px rgba(230, 198, 106, 0.5);
-  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.6);
-  pointer-events: none;
-  animation: winnerPulse 2s ease-in-out infinite;
-}
 
 @keyframes winnerPulse {
   0%, 100% { box-shadow: 0 2px 12px rgba(230, 198, 106, 0.85), 0 0 22px rgba(230, 198, 106, 0.5); }
@@ -3950,26 +3999,7 @@
   filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.7)) drop-shadow(0 0 12px rgba(230, 198, 106, 0.35));
 }
 
-/* --- Etiqueta WAITING (opcional, sutil) --- */
-.stand-card__waiting {
-  position: absolute;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 3;
-  padding: 2px 10px;
-  font-family: var(--font-display);
-  font-size: 0.55rem;
-  font-weight: 700;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--ink-2);
-  background: rgba(10, 8, 16, 0.7);
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
-  pointer-events: none;
-  opacity: 0.9;
-}
+
 
 /* ============================================================
    BARRA DE ESTADO DE FASES DEL TORNEO
@@ -4078,22 +4108,7 @@
   /* ============================================================
      BOTÓN "SALTAR TURNO RIVAL"
      ============================================================ */
-  .action-btn--utility {
-    grid-column: 1 / -1;
-    background: linear-gradient(180deg, rgba(79, 212, 212, 0.18), rgba(79, 212, 212, 0.05));
-    border-color: rgba(79, 212, 212, 0.6);
-    color: #d6f5f5;
-  }
-  
-  .action-btn--utility:hover:not(:disabled) {
-    background: linear-gradient(180deg, rgba(79, 212, 212, 0.32), rgba(79, 212, 212, 0.1));
-    border-color: var(--accent-cyan);
-    box-shadow: 0 6px 18px rgba(79, 212, 212, 0.35), 0 0 20px rgba(79, 212, 212, 0.28);
-  }
-  
-  .action-btn--utility .action-btn__icon {
-    color: var(--accent-cyan);
-  }
+ 
   
   /* ============================================================
      FIX: BADGE WAITING NO SE SOLAPA CON AFINIDAD
@@ -4113,12 +4128,18 @@
   /* Badges de estado arriba-derecha */
   .stand-card__waiting,
   .stand-card__winner,
-  .stand-card__retired {
-    top: 10px;
-    right: 10px;
-    left: auto;
-    transform: rotate(0deg);
-    transform-origin: center;
+  .stand-card__retired  {
+    position: static;
+    display: inline-block;
+    padding: 3px 12px;
+    font-family: var(--font-display);
+    font-size: 0.6rem;
+    font-weight: 900;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    border-radius: 4px;
+    white-space: nowrap;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
   }
   
   .stand-card__winner {
@@ -4171,28 +4192,6 @@
   margin-top: -2px;
 }
 
-/* --- Badge en tarjeta del Stand base --- */
-.stand-card__requiem-badge {
-  position: absolute;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%) rotate(-2deg);
-  z-index: 3;
-  padding: 2px 10px;
-  font-family: var(--font-display);
-  font-size: 0.58rem;
-  font-weight: 900;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: #1a0d2b;
-  background: linear-gradient(180deg, #d9a5ff, #a06de0);
-  border: 1px solid #f0d9ff;
-  border-radius: 4px;
-  box-shadow: 0 0 14px rgba(217, 165, 255, 0.75), 0 0 28px rgba(160, 109, 224, 0.45);
-  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
-  pointer-events: none;
-  animation: requiemBadgePulse 2.2s ease-in-out infinite;
-}
 
 @keyframes requiemBadgePulse {
   0%, 100% { box-shadow: 0 0 14px rgba(217, 165, 255, 0.75), 0 0 28px rgba(160, 109, 224, 0.45); }
