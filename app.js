@@ -4111,10 +4111,9 @@
             turnLabel.textContent = 'Combate Finalizado';
             turnTimer.textContent = '';
             disableAllActions();
-            if (btnStun) btnStun.disabled = true;
             if (btnRequiem) btnRequiem.hidden = true;
             return;
-          }
+        }
       
           const active = battle.activeSide === 'p1' ? battle.p1 : battle.p2;
           const defender = battle.activeSide === 'p1' ? battle.p2 : battle.p1;
