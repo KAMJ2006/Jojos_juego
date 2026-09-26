@@ -66,6 +66,37 @@
   
     const MAX_ABILITIES = 5;
     const MIN_ABILITIES = 1;
+      /* =========================================================
+     EFECTOS CANÓNICOS — MAPA POR ROL
+     ========================================================= */
+  const EFFECT_OPTIONS = {
+    damage: [
+      { value: 'direct', label: 'Impacto Directo',       desc: 'Daño regular sin efectos adicionales.' },
+      { value: 'poison', label: 'Toxina / Veneno',       desc: 'Daño + estado veneno por 2 turnos.' },
+      { value: 'stun',   label: 'Aturdimiento / Parálisis', desc: 'Daño ligero + probabilidad de aturdir.' }
+    ],
+    shield: [
+      { value: 'shield_flat', label: 'Barrera / Armadura',    desc: 'Absorbe daño directo.' },
+      { value: 'reflect',     label: 'Coraza Reflejante',     desc: 'Escudo que devuelve 30% del daño recibido.' }
+    ],
+    heal: [
+      { value: 'heal',    label: 'Regeneración Vital',       desc: 'Restaura HP.' },
+      { value: 'cleanse', label: 'Purificación de Miel',     desc: 'Elimina estados negativos y cura leve.' },
+      { value: 'buff',    label: 'Crecimiento Progresivo',   desc: 'Aumenta permanentemente el daño +10%.' }
+    ]
+  };
+
+  const DEFAULT_EFFECT_BY_ROLE = {
+    damage: 'direct',
+    shield: 'shield_flat',
+    heal:   'heal'
+  };
+
+  const POISON_DURATION = 2;
+  const POISON_RATIO    = 0.4;
+  const CLEANSE_HEAL_PCT = 0.15;
+  const BUFF_STEP       = 0.10;
+  const REFLECT_RATIO   = 0.30;
 
     /* =========================================================
      MÓDULO 4 — CONSTANTES Y ESTADO
@@ -932,16 +963,47 @@
             r.closest('.type-pill')?.classList.toggle('is-checked', r.checked);
           });
     
+          // Reconstruir el select de efecto con las opciones de 'damage'
+          rebuildEffectOptions(block, 'damage', 'direct');
+    
           if (i >= 3) block.classList.add('is-empty');
         });
     
-        // Requiem
         const isRequiemEl = document.getElementById('standIsRequiem');
         const requiemField = document.getElementById('standRequiemTargetField');
         if (isRequiemEl) isRequiemEl.checked = false;
         populateRequiemTargetSelect('');
         if (requiemField) requiemField.hidden = false;
       }
+        /* =========================================================
+     RECONSTRUIR SELECTOR DE EFECTO SEGÚN EL ROL
+     - role: 'damage' | 'heal' | 'shield'
+     - selectedEffect: opcional, valor a preseleccionar
+     ========================================================= */
+  function rebuildEffectOptions(block, role, selectedEffect) {
+    const sel = block.querySelector('.ability-effect-select');
+    if (!sel) return;
+
+    const options = EFFECT_OPTIONS[role] || EFFECT_OPTIONS.damage;
+    sel.innerHTML = '';
+    sel.setAttribute('data-role', role);
+
+    for (const opt of options) {
+      const el = document.createElement('option');
+      el.value = opt.value;
+      el.textContent = opt.label;
+      el.title = opt.desc || '';
+      sel.appendChild(el);
+    }
+
+    // Preseleccionar
+    const validValues = options.map((o) => o.value);
+    if (selectedEffect && validValues.includes(selectedEffect)) {
+      sel.value = selectedEffect;
+    } else {
+      sel.value = DEFAULT_EFFECT_BY_ROLE[role] || options[0].value;
+    }
+  }
         /* =========================================================
      POBLAR SELECTOR DE VÍNCULO REQUIEM
      Lista solo stands base (no requiem) del roster, excluyendo
@@ -967,110 +1029,114 @@
     }
   }
   
-      function fillForm(stand) {
-        artistNameInput.value = stand.artistName || '';
-        standNameInput.value = stand.standName || '';
-        battleCryInput.value = stand.battleCry || '';
-    
-        // Afinidad
-        if (BASE_AFFINITIES.includes(stand.affinity)) {
-          affinitySelect.value = stand.affinity;
-          if (customAffinityField) customAffinityField.hidden = true;
-          if (customAffinityInput) customAffinityInput.value = '';
-        } else if (stand.affinity) {
-          affinitySelect.value = '__custom__';
-          if (customAffinityField) customAffinityField.hidden = false;
-          if (customAffinityInput) customAffinityInput.value = stand.affinity;
-        } else {
-          affinitySelect.value = 'Físico';
-          if (customAffinityField) customAffinityField.hidden = true;
-        }
-    
-        // Stats
+  function fillForm(stand) {
+    artistNameInput.value = stand.artistName || '';
+    standNameInput.value = stand.standName || '';
+    battleCryInput.value = stand.battleCry || '';
+
+    if (BASE_AFFINITIES.includes(stand.affinity)) {
+      affinitySelect.value = stand.affinity;
+      if (customAffinityField) customAffinityField.hidden = true;
+      if (customAffinityInput) customAffinityInput.value = '';
+    } else if (stand.affinity) {
+      affinitySelect.value = '__custom__';
+      if (customAffinityField) customAffinityField.hidden = false;
+      if (customAffinityInput) customAffinityInput.value = stand.affinity;
+    } else {
+      affinitySelect.value = 'Físico';
+      if (customAffinityField) customAffinityField.hidden = true;
+    }
+
+    STAT_KEYS.forEach((k) => {
+      const sel = $(`.field--stat select[data-stat="${k}"]`);
+      if (sel) sel.value = stand.stats[k] || 'B';
+    });
+
+    const blocks = $$('.ability-block');
+    for (let i = 0; i < MAX_ABILITIES; i++) {
+      const block = blocks[i];
+      if (!block) continue;
+      const ab = (stand.abilities && stand.abilities[i]) || {};
+
+      const nameEl = block.querySelector('.ability-name');
+      const dmgEl  = block.querySelector('.ability-damage');
+      const cdEl   = block.querySelector('.ability-cooldown');
+      const descEl = block.querySelector('.ability-desc');
+      const accEl  = block.querySelector('.ability-accuracy');
+
+      if (nameEl) nameEl.value = ab.name || '';
+      if (dmgEl)  dmgEl.value  = ab.damage ?? 30;
+      if (cdEl)   cdEl.value   = ab.cooldown ?? 1;
+      if (descEl) descEl.value = ab.description || '';
+      if (accEl)  accEl.value  = ab.accuracy ?? 100;
+
+      const savedType = ab.type || 'damage';
+      const typeRadios = block.querySelectorAll('.ability-type');
+      typeRadios.forEach((r) => {
+        r.checked = (r.value === savedType);
+        r.closest('.type-pill')?.classList.toggle('is-checked', r.checked);
+      });
+
+      // Repoblar el select de efecto según el rol y seleccionar el guardado
+      rebuildEffectOptions(block, savedType, ab.effect);
+
+      if (i >= 3) block.classList.toggle('is-empty', !ab.name);
+    }
+
+    // Requiem
+    const isRequiemEl = document.getElementById('standIsRequiem');
+    const requiemField = document.getElementById('standRequiemTargetField');
+    if (isRequiemEl) isRequiemEl.checked = !!stand.isRequiem;
+    populateRequiemTargetSelect(stand.requiemStandId || '');
+    if (requiemField) requiemField.hidden = !!stand.isRequiem;
+  }
+  
+      function collectForm() {
+        const stats = {};
         STAT_KEYS.forEach((k) => {
           const sel = $(`.field--stat select[data-stat="${k}"]`);
-          if (sel) sel.value = stand.stats[k] || 'B';
+          stats[k] = sel ? sel.value : 'B';
         });
     
-        // Habilidades
-        const blocks = $$('.ability-block');
-        for (let i = 0; i < MAX_ABILITIES; i++) {
-          const block = blocks[i];
-          if (!block) continue;
-          const ab = (stand.abilities && stand.abilities[i]) || {};
+        const abilities = $$('.ability-block').map((block) => {
+          const checkedType = block.querySelector('.ability-type:checked');
+          const type = checkedType ? checkedType.value : 'damage';
+          const effectSel = block.querySelector('.ability-effect-select');
     
-          const nameEl = block.querySelector('.ability-name');
-          const dmgEl  = block.querySelector('.ability-damage');
-          const cdEl   = block.querySelector('.ability-cooldown');
-          const descEl = block.querySelector('.ability-desc');
-          const accEl  = block.querySelector('.ability-accuracy');
+          return {
+            name: (block.querySelector('.ability-name')?.value || '').trim(),
+            damage: clampNumber(block.querySelector('.ability-damage')?.value, 15, 60, 30),
+            cooldown: clampNumber(block.querySelector('.ability-cooldown')?.value, 0, 5, 1),
+            accuracy: clampNumber(block.querySelector('.ability-accuracy')?.value, 10, 100, 100),
+            description: (block.querySelector('.ability-desc')?.value || '').trim(),
+            type,
+            effect: effectSel && effectSel.value
+              ? effectSel.value
+              : DEFAULT_EFFECT_BY_ROLE[type]
+          };
+        });
     
-          if (nameEl) nameEl.value = ab.name || '';
-          if (dmgEl)  dmgEl.value  = ab.damage ?? 30;
-          if (cdEl)   cdEl.value   = ab.cooldown ?? 1;
-          if (descEl) descEl.value = ab.description || '';
-          if (accEl)  accEl.value  = ab.accuracy ?? 100;
+        const activeAbilities = abilities.filter((ab) => ab.name.length > 0);
     
-          const typeRadios = block.querySelectorAll('.ability-type');
-          const savedType = ab.type || 'damage';
-          typeRadios.forEach((r) => {
-            r.checked = (r.value === savedType);
-            r.closest('.type-pill')?.classList.toggle('is-checked', r.checked);
-          });
-    
-          if (i >= 3) block.classList.toggle('is-empty', !ab.name);
-        }
-    
-        // --- Requiem ---
         const isRequiemEl = document.getElementById('standIsRequiem');
         const requiemTargetEl = document.getElementById('standRequiemTarget');
-        const requiemField = document.getElementById('standRequiemTargetField');
     
-        if (isRequiemEl) isRequiemEl.checked = !!stand.isRequiem;
-        populateRequiemTargetSelect(stand.requiemStandId || '');
-        if (requiemField) requiemField.hidden = !!stand.isRequiem;
-      }
-  
-    function collectForm() {
-      const stats = {};
-      STAT_KEYS.forEach((k) => {
-        const sel = $(`.field--stat select[data-stat="${k}"]`);
-        stats[k] = sel ? sel.value : 'B';
-      });
-  
-      const abilities = $$('.ability-block').map((block) => {
-        const checkedType = block.querySelector('.ability-type:checked');
+        const isRequiem = isRequiemEl ? isRequiemEl.checked : false;
+        const requiemStandId = (!isRequiem && requiemTargetEl && requiemTargetEl.value)
+          ? requiemTargetEl.value
+          : null;
+    
         return {
-          name: (block.querySelector('.ability-name')?.value || '').trim(),
-          damage: clampNumber(block.querySelector('.ability-damage')?.value, 15, 60, 30),
-          cooldown: clampNumber(block.querySelector('.ability-cooldown')?.value, 0, 5, 1),
-          accuracy: clampNumber(block.querySelector('.ability-accuracy')?.value, 10, 100, 100),
-          description: (block.querySelector('.ability-desc')?.value || '').trim(),
-          type: checkedType ? checkedType.value : 'damage'
+          artistName: artistNameInput.value.trim(),
+          standName: standNameInput.value.trim(),
+          affinity: resolveAffinityFromForm(),
+          battleCry: battleCryInput.value.trim(),
+          stats,
+          abilities: activeAbilities,
+          isRequiem,
+          requiemStandId
         };
-      });
-  
-      const activeAbilities = abilities.filter((ab) => ab.name.length > 0);
-  
-      const isRequiemEl = document.getElementById('standIsRequiem');
-      const requiemTargetEl = document.getElementById('standRequiemTarget');
-  
-      const isRequiem = isRequiemEl ? isRequiemEl.checked : false;
-      const requiemStandId = (!isRequiem && requiemTargetEl && requiemTargetEl.value)
-        ? requiemTargetEl.value
-        : null;
-  
-      return {
-        artistName: artistNameInput.value.trim(),
-        standName: standNameInput.value.trim(),
-        affinity: resolveAffinityFromForm(),
-        battleCry: battleCryInput.value.trim(),
-        stats,
-        abilities: activeAbilities,
-        isRequiem,
-        requiemStandId
-      };
-    }
+      }
   
     /* =========================================================
        IMAGEN — CODIFICACIÓN BASE64
@@ -1361,20 +1427,32 @@
       });
   
       const abilities = Array.isArray(raw.abilities)
-        ? raw.abilities.slice(0, MAX_ABILITIES).map((ab) => ({
+      ? raw.abilities.slice(0, MAX_ABILITIES).map((ab) => {
+          const type = ['damage', 'heal', 'shield'].includes(ab?.type) ? ab.type : 'damage';
+          const validEffects = (EFFECT_OPTIONS[type] || []).map((o) => o.value);
+          const effect = validEffects.includes(ab?.effect)
+            ? ab.effect
+            : DEFAULT_EFFECT_BY_ROLE[type];
+
+          return {
             name: String(ab?.name || '').slice(0, 60),
             damage: clampNumber(ab?.damage, 15, 60, 30),
             cooldown: clampNumber(ab?.cooldown, 0, 5, 1),
             accuracy: clampNumber(ab?.accuracy, 10, 100, 100),
             description: String(ab?.description || '').slice(0, 200),
-            type: ['damage', 'heal', 'shield'].includes(ab?.type) ? ab.type : 'damage'
-          }))
-        : [];
-  
-      const activeAbilities = abilities.filter((a) => a.name.length > 0);
-      while (activeAbilities.length < MIN_ABILITIES) {
-        activeAbilities.push({ name: 'Ataque Básico', damage: 30, cooldown: 0, accuracy: 100, description: '', type: 'damage' });
-      }
+            type,
+            effect
+          };
+        })
+      : [];
+
+    const activeAbilities = abilities.filter((a) => a.name.length > 0);
+    while (activeAbilities.length < MIN_ABILITIES) {
+      activeAbilities.push({
+        name: 'Ataque Básico', damage: 30, cooldown: 0, accuracy: 100,
+        description: '', type: 'damage', effect: 'direct'
+      });
+    }
   
       return {
         id: typeof raw.id === 'string' && raw.id ? raw.id : uid(),
@@ -1636,7 +1714,17 @@
       const roman = ['Ⅰ', 'Ⅱ', 'Ⅲ'][index] || '•';
       tooltipIcon.textContent = roman;
       tooltipName.textContent = ability.name || `Habilidad ${roman}`;
-  
+      
+          // Efecto canónico
+    const role = ability.type || 'damage';
+    const effectValue = ability.effect || DEFAULT_EFFECT_BY_ROLE[role];
+    const effectMeta = (EFFECT_OPTIONS[role] || []).find((o) => o.value === effectValue);
+    if (effectMeta) {
+      tooltipDesc.textContent = `${ability.description || ''}\n— ${effectMeta.label}: ${effectMeta.desc}`.trim();
+    } else {
+      tooltipDesc.textContent = ability.description || '';
+    }
+
       const kind = inferAbilityKind(ability);
       tooltipType.textContent = ABILITY_KIND_LABELS[kind] || 'Habilidad';
       tooltipType.setAttribute('data-kind', kind);
@@ -1719,6 +1807,17 @@
        EVENTOS
        ========================================================= */
     function bindEvents() {
+          // Reconstruir efectos cuando cambie el rol de una habilidad
+    document.addEventListener('change', (e) => {
+      if (e.target && e.target.classList && e.target.classList.contains('ability-type')) {
+        const block = e.target.closest('.ability-block');
+        if (!block) return;
+        const role = e.target.value;
+        // Conservar el efecto si sigue siendo válido para el nuevo rol
+        const currentEffect = block.querySelector('.ability-effect-select')?.value;
+        rebuildEffectOptions(block, role, currentEffect);
+      }
+    });
           // Toggle Requiem
     const isRequiemEl = document.getElementById('standIsRequiem');
     const requiemField = document.getElementById('standRequiemTargetField');
@@ -2387,7 +2486,22 @@
   }
 
     function sanitizeForBattle(stand) {
+      
       return {
+        abilities: (stand.abilities || []).map((a) => {
+          const type = ['damage', 'heal', 'shield'].includes(a.type) ? a.type : 'damage';
+          const validEffects = (EFFECT_OPTIONS[type] || []).map((o) => o.value);
+          const effect = validEffects.includes(a.effect) ? a.effect : DEFAULT_EFFECT_BY_ROLE[type];
+          return {
+            name: a.name || '',
+            type,
+            effect,
+            damage: clampNumber(a.damage, 15, 60, 30),
+            cooldown: clampNumber(a.cooldown, 0, 5, 1),
+            accuracy: clampNumber(a.accuracy, 10, 100, 100),
+            description: a.description || ''
+          };
+        }),
         id: stand.id,
         artistName: stand.artistName,
         standName: stand.standName,
@@ -2633,70 +2747,194 @@
     /* =========================================================
      MÓDULO 3 — INICIO DE BATALLA
      ========================================================= */
-     function startBattleEngine() {
-      if (!currentMatchup || !currentMatchup.p1 || !currentMatchup.p2) {
-        toast('No hay enfrentamiento activo.', 'error');
-        return;
+       /* =========================================================
+     FÁBRICA DE ESTADO DE COMBATIENTE
+     Garantiza que SIEMPRE existan los campos de estado nuevo.
+     ========================================================= */
+  function createFighterState(data, hp, maxHp) {
+    const safeHp = Number.isFinite(hp) ? hp : 100;
+    const safeMaxHp = Number.isFinite(maxHp) ? maxHp : safeHp;
+
+    return {
+      data,
+      hp: safeHp,
+      maxHp: safeMaxHp,
+      cooldowns: [0, 0, 0, 0, 0],
+      totalDamage: 0,
+      shield: false,
+      currentShield: 0,
+      reflectActive: false,
+      statusEffects: [],
+      tempBuffs: { damageMult: 1.0 },
+      __requiemTriggered: false,
+      __isRequiemForm: false
+    };
+  }
+
+  function startBattleEngine() {
+    if (!currentMatchup || !currentMatchup.p1 || !currentMatchup.p2) {
+      toast('No hay enfrentamiento activo.', 'error');
+      return;
+    }
+
+    const p1 = currentMatchup.p1;
+    const p2 = currentMatchup.p2;
+    const stage = currentMatchup.stage;
+
+    const p1Hp = computeHP(p1.stats.durability, p1.level || DEFAULT_LEVEL);
+    const p2Hp = computeHP(p2.stats.durability, p2.level || DEFAULT_LEVEL);
+
+    battle = {
+      p1: createFighterState(p1, p1Hp, p1Hp),
+      p2: createFighterState(p2, p2Hp, p2Hp),
+      stage: stage || null,
+      activeSide: determineInitiative(p1, p2),
+      turn: 1,
+      round: 1,
+      log: [],
+      finished: false,
+      busy: false,
+      basicAttackLocked: 0,
+      basicAttackLockedBy: null,
+      skipRivalPending: false
+    };
+
+    // Incrementar contador individual de combates
+    [p1, p2].forEach((fighter) => {
+      const idx = roster.findIndex((s) => s.id === fighter.id);
+      if (idx >= 0) {
+        roster[idx].tournamentBattles = (roster[idx].tournamentBattles || 0) + 1;
+      }
+    });
+    saveRoster();
+
+    // Transición de vistas
+    versusScreen.hidden = true;
+    tournamentView.hidden = true;
+    battleView.hidden = false;
+    document.body.classList.add('is-battling');
+    window.scrollTo(0, 0);
+
+    // Fondo del escenario
+    if (stage && stage.image) {
+      battleBg.style.backgroundImage = `url("${stage.image}")`;
+      battleStageName.textContent = stage.name;
+    } else {
+      battleBg.style.backgroundImage = '';
+      battleBg.style.background = 'radial-gradient(ellipse at center, #1a1524, #0a0810 70%)';
+      battleStageName.textContent = 'Terreno Neutro';
+    }
+
+    // Reset del módulo de eventos
+    if (window.JJA_EventsRoulette) {
+      window.JJA_EventsRoulette.resetForBattle();
+    }
+
+    renderBattleUI();
+    updateHpBar('p1');
+    updateHpBar('p2');
+    announceTurn();
+    updateActionPanel();
+  }
+      
+    /* =========================================================
+     RESOLUCIÓN DE ESTADOS AL INICIO DEL TURNO
+     - Aplica daño de veneno
+     - Consume turno si hay stun
+     Devuelve true si el turno debe ser consumido (skip).
+     ========================================================= */
+     function resolveStatusEffectsAtTurnStart(side) {
+      if (!battle || battle.finished) return false;
+  
+      const fighter = battle[side];
+      if (!fighter) return false;
+  
+      // --- GUARD: garantizar estructura de estado ---
+      if (!Array.isArray(fighter.statusEffects)) {
+        fighter.statusEffects = [];
+      }
+      if (!fighter.tempBuffs || typeof fighter.tempBuffs !== 'object') {
+        fighter.tempBuffs = { damageMult: 1.0 };
+      }
+      if (!Number.isFinite(fighter.tempBuffs.damageMult)) {
+        fighter.tempBuffs.damageMult = 1.0;
+      }
+      if (!Number.isFinite(fighter.currentShield)) {
+        fighter.currentShield = 0;
+      }
+      if (typeof fighter.reflectActive !== 'boolean') {
+        fighter.reflectActive = false;
       }
   
-      const p1 = currentMatchup.p1;
-      const p2 = currentMatchup.p2;
-      const stage = currentMatchup.stage;
+      // --- Veneno ---
+      const poisonIdx = fighter.statusEffects.findIndex((e) => e && e.type === 'poison');
+      if (poisonIdx >= 0) {
+        const poison = fighter.statusEffects[poisonIdx];
+        const dmg = Math.max(1, Math.round(Number(poison.value) || 5));
+        fighter.hp = Math.max(0, fighter.hp - dmg);
   
-      const p1Hp = computeHP(p1.stats.durability, p1.level || DEFAULT_LEVEL);
-      const p2Hp = computeHP(p2.stats.durability, p2.level || DEFAULT_LEVEL);
+        updateHpBar(side);
   
-      battle = {
-        p1: { data: p1, hp: p1Hp, maxHp: p1Hp, cooldowns: [0, 0, 0, 0, 0], totalDamage: 0, shield: false },
-        p2: { data: p2, hp: p2Hp, maxHp: p2Hp, cooldowns: [0, 0, 0, 0, 0], totalDamage: 0, shield: false },
-        stage: stage || null,
-        activeSide: determineInitiative(p1, p2),
-        turn: 1,
-        round: 1,
-        log: [],
-        finished: false,
-        busy: false,
-        basicAttackLocked: 0,
-        basicAttackLockedBy: null,
-        skipRivalPending: false
-      };
-  
-      // Incrementar contador individual de combates
-      [p1, p2].forEach((fighter) => {
-        const idx = roster.findIndex((s) => s.id === fighter.id);
-        if (idx >= 0) {
-          roster[idx].tournamentBattles = (roster[idx].tournamentBattles || 0) + 1;
+        const fighterEl = side === 'p1' ? fighterP1 : fighterP2;
+        if (fighterEl) {
+          fighterEl.classList.add('is-hit');
+          setTimeout(() => fighterEl.classList.remove('is-hit'), 600);
         }
-      });
-      saveRoster();
   
-      // Transición de vistas
-      versusScreen.hidden = true;
-      tournamentView.hidden = true;
-      battleView.hidden = false;
-      document.body.classList.add('is-battling');
-      window.scrollTo(0, 0);
+        pushLog({
+          side,
+          type: 'poison',
+          html: `☠ <strong>${escapeHtml(fighter.data.standName)}</strong> sufre <span class="log-entry__dmg">${dmg}</span> de daño por <strong>veneno</strong> (${poison.duration} turno${poison.duration > 1 ? 's' : ''} restante${poison.duration > 1 ? 's' : ''}).`
+        });
   
-      // Fondo del escenario
-      if (stage && stage.image) {
-        battleBg.style.backgroundImage = `url("${stage.image}")`;
-        battleStageName.textContent = stage.name;
-      } else {
-        battleBg.style.backgroundImage = '';
-        battleBg.style.background = 'radial-gradient(ellipse at center, #1a1524, #0a0810 70%)';
-        battleStageName.textContent = 'Terreno Neutro';
+        poison.duration = (Number(poison.duration) || 0) - 1;
+        if (poison.duration <= 0) {
+          fighter.statusEffects.splice(poisonIdx, 1);
+          pushLog({
+            side,
+            type: 'poison',
+            html: `✓ El veneno de <strong>${escapeHtml(fighter.data.standName)}</strong> se ha disipado.`
+          });
+        }
+  
+        // ¿K.O. por veneno?
+        if (fighter.hp <= 0) {
+          battle.finished = true;
+          const winnerSide = side === 'p1' ? 'p2' : 'p1';
+          const winner = battle[winnerSide];
+          pushLog({
+            side: winnerSide,
+            type: 'ko',
+            html: `¡K.O. por veneno! <strong>${escapeHtml(winner.data.standName)}</strong> gana el combate.`
+          });
+          renderBattleUI();
+          updateActionPanel();
+          setTimeout(() => showVictoryModal(winnerSide), 900);
+          return true;
+        }
       }
   
-      // Reset del módulo de eventos
-      if (window.JJA_EventsRoulette) {
-        window.JJA_EventsRoulette.resetForBattle();
+      // --- Stun ---
+      const stunIdx = fighter.statusEffects.findIndex((e) => e && e.type === 'stun');
+      if (stunIdx >= 0) {
+        fighter.statusEffects.splice(stunIdx, 1);
+  
+        pushLog({
+          side,
+          type: 'stun',
+          html: `⚡ <strong>${escapeHtml(fighter.data.standName)}</strong> está aturdido y <strong>no puede moverse</strong>. ¡Turno omitido!`
+        });
+  
+        const fighterEl = side === 'p1' ? fighterP1 : fighterP2;
+        if (fighterEl) {
+          fighterEl.classList.add('is-hit');
+          setTimeout(() => fighterEl.classList.remove('is-hit'), 700);
+        }
+  
+        return true;
       }
   
-      renderBattleUI();
-      updateHpBar('p1');
-      updateHpBar('p2');
-      announceTurn();
-      updateActionPanel();
+      return false;
     }
     
       function determineInitiative(p1, p2) {
@@ -2742,7 +2980,60 @@
           }
       
           fighterP1.classList.toggle('has-shield', !!battle.p1.shield);
+          renderStatusChips();
           fighterP2.classList.toggle('has-shield', !!battle.p2.shield);
+            /* =========================================================
+     RENDER DE CHIPS DE ESTADO
+     ========================================================= */
+     function renderStatusChips() {
+      if (!battle) return;
+  
+      const buildChips = (fighter) => {
+        if (!fighter) return '';
+  
+        // --- GUARDS ---
+        if (!Array.isArray(fighter.statusEffects)) {
+          fighter.statusEffects = [];
+        }
+        if (!fighter.tempBuffs || typeof fighter.tempBuffs !== 'object') {
+          fighter.tempBuffs = { damageMult: 1.0 };
+        }
+        if (!Number.isFinite(fighter.tempBuffs.damageMult)) {
+          fighter.tempBuffs.damageMult = 1.0;
+        }
+        if (!Number.isFinite(fighter.currentShield)) {
+          fighter.currentShield = 0;
+        }
+  
+        const chips = [];
+  
+        const poison = fighter.statusEffects.find((e) => e && e.type === 'poison');
+        if (poison) {
+          chips.push(`<span class="status-effect-chip status-effect-chip--poison">☠ Veneno (${poison.duration || 0})</span>`);
+        }
+  
+        const stun = fighter.statusEffects.find((e) => e && e.type === 'stun');
+        if (stun) {
+          chips.push(`<span class="status-effect-chip status-effect-chip--stun">⚡ Aturdido</span>`);
+        }
+  
+        const buffPct = Math.round(((fighter.tempBuffs.damageMult || 1.0) - 1) * 100);
+        if (buffPct > 0) {
+          chips.push(`<span class="status-effect-chip status-effect-chip--buff">▲ +${buffPct}% Daño</span>`);
+        }
+  
+        if (fighter.currentShield > 0) {
+          chips.push(`<span class="status-effect-chip status-effect-chip--shield">🛡 ${fighter.currentShield}</span>`);
+        }
+  
+        return chips.join('');
+      };
+  
+      const statusP1El = document.getElementById('statusP1');
+      const statusP2El = document.getElementById('statusP2');
+      if (statusP1El) statusP1El.innerHTML = buildChips(battle.p1);
+      if (statusP2El) statusP2El.innerHTML = buildChips(battle.p2);
+    }
       
           // Radar charts
           if (radarP1) renderRadarInto(radarP1, battle.p1.data.stats, { size: 140, compact: true, withBackground: true });
@@ -3018,6 +3309,8 @@
             battle.busy = false;
             return;
           }
+          const result = executeAbility(attackerSide, skillIndex);
+
           actionName = ability.name || `Habilidad ${skillIndex + 1}`;
           const kind = ability.type || 'damage';
     
@@ -3254,32 +3547,33 @@
         const next = previous === 'p1' ? 'p2' : 'p1';
     
         // =========================================================
-         // STUN: si el jugador entrante tiene un "skip" pendiente,
-         // se salta su turno y vuelve a jugar el anterior.
+         // STUN de "skipRivalPending" (botón Saltar Turno Rival)
          // =========================================================
         if (battle.skipRivalPending && next !== previous) {
           battle.skipRivalPending = false;
     
           const skipped = battle[next];
+          if (!skipped) return;
+    
           pushLog({
             side: next,
             type: '',
             html: `⏳ <strong>${escapeHtml(skipped.data.standName)}</strong> pierde su turno por el impacto.`
           });
     
-          // Marcar el fighter aturdido visualmente
           const skippedEl = next === 'p1' ? fighterP1 : fighterP2;
-          skippedEl.classList.add('is-defeated'); // reutilizamos como aturdimiento breve
-          setTimeout(() => {
-            if (skipped.hp > 0) skippedEl.classList.remove('is-defeated');
-          }, 700);
+          if (skippedEl) {
+            skippedEl.classList.add('is-defeated');
+            setTimeout(() => { if (skipped.hp > 0) skippedEl.classList.remove('is-defeated'); }, 700);
+          }
     
-          // Reanudar: no cambiamos activeSide, sigue el mismo jugador
           battle.turn += 1;
     
-          // Tick de cooldowns del jugador que REPITE turno (baja sus CDs)
+          // Decrementar cooldowns del jugador que repite
           const repeat = battle[previous];
-          repeat.cooldowns = repeat.cooldowns.map((cd) => (cd > 0 ? cd - 1 : 0));
+          if (repeat && Array.isArray(repeat.cooldowns)) {
+            repeat.cooldowns = repeat.cooldowns.map((cd) => (cd > 0 ? cd - 1 : 0));
+          }
     
           renderBattleUI();
           updateActionPanel();
@@ -3290,16 +3584,26 @@
           return;
         }
     
-        // Avanzar turno normal
+        // =========================================================
+         // AVANCE DE TURNO NORMAL
+         // =========================================================
         battle.activeSide = next;
         battle.turn += 1;
         if (battle.turn % 2 === 1) battle.round += 1;
     
-        // Decremento de cooldowns del JUGADOR QUE VA A ACTUAR AHORA
+        // Decrementar cooldowns del próximo jugador
         const incoming = battle[next];
-        incoming.cooldowns = incoming.cooldowns.map((cd) => (cd > 0 ? cd - 1 : 0));
+        if (incoming) {
+          if (!Array.isArray(incoming.cooldowns)) {
+            incoming.cooldowns = [0, 0, 0, 0, 0];
+          }
+          incoming.cooldowns = incoming.cooldowns.map((cd) => {
+            const n = Number(cd) || 0;
+            return n > 0 ? n - 1 : 0;
+          });
+        }
     
-        // Consumir bloqueo de Ataque Básico
+        // Consumir Silencio de Hierro
         if ((battle.basicAttackLocked || 0) > 0) {
           battle.basicAttackLocked = Math.max(0, battle.basicAttackLocked - 1);
           if (battle.basicAttackLocked === 0) {
@@ -3313,6 +3617,48 @@
         }
     
         renderBattleUI();
+    
+        // =========================================================
+         // RESOLVER ESTADOS DEL PRÓXIMO JUGADOR
+         // =========================================================
+        const turnConsumed = resolveStatusEffectsAtTurnStart(next);
+    
+        if (turnConsumed) {
+          // El turno fue consumido (stun o K.O. por veneno).
+          if (!battle.finished) {
+            // Saltar directamente al otro jugador (previous)
+            battle.activeSide = previous;
+            battle.turn += 1;
+    
+            const back = battle[previous];
+            if (back) {
+              if (!Array.isArray(back.cooldowns)) {
+                back.cooldowns = [0, 0, 0, 0, 0];
+              }
+              back.cooldowns = back.cooldowns.map((cd) => (cd > 0 ? cd - 1 : 0));
+            }
+    
+            renderBattleUI();
+    
+            // Resolver también los estados del jugador que vuelve a actuar
+            // (por si tuviera veneno/stun pendiente)
+            const backConsumed = resolveStatusEffectsAtTurnStart(previous);
+    
+            if (backConsumed && !battle.finished) {
+              // Ambos aturdidos: pasar el turno al original
+              battle.activeSide = next;
+              battle.turn += 1;
+            }
+    
+            updateActionPanel();
+            announceTurn();
+            if (window.JJA_EventsRoulette && battle) {
+              window.JJA_EventsRoulette.maybeTriggerEvent(battle);
+            }
+          }
+          return;
+        }
+    
         updateActionPanel();
         announceTurn();
     
@@ -3320,6 +3666,7 @@
           window.JJA_EventsRoulette.maybeTriggerEvent(battle);
         }
       }
+      
       
       function announceTurn() {
         if (!battle || battle.finished) return;
@@ -3507,6 +3854,375 @@
             btnRequiem.onclick = () => triggerRequiem(activeSide);
           }
         }
+          /* =========================================================
+     EJECUCIÓN MODULAR DE HABILIDADES
+     Despacha por (type, effect). Muta el estado battle.
+     Devuelve { skipTurn, outcome } donde skipTurn indica que
+     el turno fue consumido y no debe pasarse de nuevo.
+     ========================================================= */
+     function executeAbility(attackerSide, skillIndex) {
+      if (!battle || battle.finished) return { skipTurn: true };
+  
+      const attacker = battle[attackerSide];
+      const defenderSide = attackerSide === 'p1' ? 'p2' : 'p1';
+      const defender = battle[defenderSide];
+  
+      if (!attacker || !defender) return { skipTurn: true };
+  
+      // --- GUARDS de estructura de estado ---
+      if (!Array.isArray(attacker.cooldowns)) attacker.cooldowns = [0, 0, 0, 0, 0];
+      if (!Array.isArray(defender.cooldowns)) defender.cooldowns = [0, 0, 0, 0, 0];
+  
+      if (!attacker.tempBuffs || typeof attacker.tempBuffs !== 'object') {
+        attacker.tempBuffs = { damageMult: 1.0 };
+      }
+      if (!Number.isFinite(attacker.tempBuffs.damageMult)) {
+        attacker.tempBuffs.damageMult = 1.0;
+      }
+  
+      if (!defender.tempBuffs || typeof defender.tempBuffs !== 'object') {
+        defender.tempBuffs = { damageMult: 1.0 };
+      }
+      if (!Number.isFinite(defender.tempBuffs.damageMult)) {
+        defender.tempBuffs.damageMult = 1.0;
+      }
+  
+      if (!Array.isArray(attacker.statusEffects)) attacker.statusEffects = [];
+      if (!Array.isArray(defender.statusEffects)) defender.statusEffects = [];
+  
+      if (!Number.isFinite(attacker.currentShield)) attacker.currentShield = 0;
+      if (!Number.isFinite(defender.currentShield)) defender.currentShield = 0;
+  
+      if (typeof attacker.reflectActive !== 'boolean') attacker.reflectActive = false;
+      if (typeof defender.reflectActive !== 'boolean') defender.reflectActive = false;
+  
+      const ability = attacker.data.abilities[skillIndex];
+      if (!ability) {
+        battle.busy = false;
+        return { skipTurn: true };
+      }
+  
+      const role = ability.type || 'damage';
+      const effect = ability.effect || DEFAULT_EFFECT_BY_ROLE[role];
+      const actionName = ability.name || `Habilidad ${skillIndex + 1}`;
+  
+      // Cooldown (guardamos CD+1 por el turno actual)
+      attacker.cooldowns[skillIndex] = (Number(ability.cooldown) || 0) + 1;
+
+    // --- SEGUROS ANTI-CHISPAS ---
+    if (role === 'heal' && effect === 'heal' && attacker.hp >= attacker.maxHp) {
+      pushLog({
+        side: attackerSide,
+        type: '',
+        html: `⚠ <strong>${escapeHtml(attacker.data.standName)}</strong> intenta curar pero su HP ya está al máximo. <strong>Acción cancelada.</strong>`
+      });
+      attacker.cooldowns[skillIndex] = Math.max(0, attacker.cooldowns[skillIndex] - 1);
+      return { skipTurn: true, cancelled: true };
+    }
+
+    if (role === 'shield' && (attacker.currentShield > 0 || attacker.shield)) {
+      pushLog({
+        side: attackerSide,
+        type: '',
+        html: `⚠ <strong>${escapeHtml(attacker.data.standName)}</strong> ya tiene una defensa activa. <strong>Acción cancelada.</strong>`
+      });
+      attacker.cooldowns[skillIndex] = Math.max(0, attacker.cooldowns[skillIndex] - 1);
+      return { skipTurn: true, cancelled: true };
+    }
+
+    const attackerEl = attackerSide === 'p1' ? fighterP1 : fighterP2;
+    const defenderEl = defenderSide === 'p1' ? fighterP1 : fighterP2;
+    const cryText = attacker.data.battleCry
+      ? `<span class="log-entry__cry">“${escapeHtml(attacker.data.battleCry)}”</span>`
+      : '';
+
+    /* ============================
+       ROL: HEAL / SOPORTE
+       ============================ */
+    if (role === 'heal') {
+      if (effect === 'heal') {
+        const healPct = 0.22;
+        const rawHeal = Math.round(attacker.maxHp * healPct);
+        const before = attacker.hp;
+        attacker.hp = Math.min(attacker.maxHp, attacker.hp + rawHeal);
+        const healed = attacker.hp - before;
+
+        attackerEl.classList.add('is-healing');
+        setTimeout(() => attackerEl.classList.remove('is-healing'), 1000);
+
+        const healFloat = document.createElement('div');
+        healFloat.className = 'damage-float damage-float--heal';
+        healFloat.textContent = `+${healed}`;
+        attackerEl.appendChild(healFloat);
+        setTimeout(() => healFloat.remove(), 1200);
+
+        updateHpBar(attackerSide);
+        pushLog({
+          side: attackerSide,
+          type: 'heal',
+          html: `<strong>${escapeHtml(attacker.data.standName)}</strong> usa <em>${escapeHtml(actionName)}</em> y recupera <span style="color:var(--ready-hi);font-weight:700;">+${healed}</span> HP.${cryText}`
+        });
+        return { skipTurn: false };
+      }
+
+      if (effect === 'cleanse') {
+        const hadEffects = attacker.statusEffects.length > 0;
+        attacker.statusEffects = [];
+
+        const healPct = CLEANSE_HEAL_PCT;
+        const rawHeal = Math.round(attacker.maxHp * healPct);
+        const before = attacker.hp;
+        attacker.hp = Math.min(attacker.maxHp, attacker.hp + rawHeal);
+        const healed = attacker.hp - before;
+
+        attackerEl.classList.add('is-healing');
+        setTimeout(() => attackerEl.classList.remove('is-healing'), 1000);
+
+        if (healed > 0) {
+          const healFloat = document.createElement('div');
+          healFloat.className = 'damage-float damage-float--heal';
+          healFloat.textContent = `+${healed}`;
+          attackerEl.appendChild(healFloat);
+          setTimeout(() => healFloat.remove(), 1200);
+        }
+
+        updateHpBar(attackerSide);
+        pushLog({
+          side: attackerSide,
+          type: 'cleanse',
+          html: `✧ <strong>${escapeHtml(attacker.data.standName)}</strong> usa <em>${escapeHtml(actionName)}</em>. ¡Se han purificado todas las toxinas y estados negativos! ${healed > 0 ? `Recupera <span style="color:var(--ready-hi);font-weight:700;">+${healed}</span> HP.` : ''}${hadEffects ? '' : ' (No había estados que limpiar.)'}${cryText}`
+        });
+        return { skipTurn: false };
+      }
+
+      if (effect === 'buff') {
+        attacker.tempBuffs.damageMult = (attacker.tempBuffs.damageMult || 1.0) + BUFF_STEP;
+        const pct = Math.round((attacker.tempBuffs.damageMult - 1) * 100);
+
+        attackerEl.classList.add('is-healing');
+        setTimeout(() => attackerEl.classList.remove('is-healing'), 1000);
+
+        pushLog({
+          side: attackerSide,
+          type: 'buff',
+          html: `▲ <strong>${escapeHtml(attacker.data.standName)}</strong> usa <em>${escapeHtml(actionName)}</em>. ¡Crecimiento Progresivo! Daño aumentado a <strong>+${pct}%</strong> este combate.${cryText}`
+        });
+        return { skipTurn: false };
+      }
+    }
+
+    /* ============================
+       ROL: SHIELD / ESCUDO
+       ============================ */
+    if (role === 'shield') {
+      if (effect === 'shield_flat') {
+        const shieldValue = Math.round(attacker.maxHp * 0.35);
+        attacker.currentShield = (attacker.currentShield || 0) + shieldValue;
+        attacker.shield = true;
+
+        attackerEl.classList.add('is-shielding', 'has-shield');
+        setTimeout(() => attackerEl.classList.remove('is-shielding'), 1000);
+
+        pushLog({
+          side: attackerSide,
+          type: 'shield',
+          html: `🛡 <strong>${escapeHtml(attacker.data.standName)}</strong> activa <em>${escapeHtml(actionName)}</em>. <strong>Barrera +${shieldValue}</strong> absorbe el próximo daño.${cryText}`
+        });
+        return { skipTurn: false };
+      }
+
+      if (effect === 'reflect') {
+        const shieldValue = Math.round(attacker.maxHp * 0.25);
+        attacker.currentShield = (attacker.currentShield || 0) + shieldValue;
+        attacker.shield = true;
+        attacker.reflectActive = true;
+
+        attackerEl.classList.add('is-shielding', 'has-shield');
+        setTimeout(() => attackerEl.classList.remove('is-shielding'), 1000);
+
+        pushLog({
+          side: attackerSide,
+          type: 'reflect',
+          html: `✧ <strong>${escapeHtml(attacker.data.standName)}</strong> activa <em>${escapeHtml(actionName)}</em>. <strong>Coraza Reflejante</strong> devolverá 30% del daño.${cryText}`
+        });
+        return { skipTurn: false };
+      }
+    }
+
+    /* ============================
+       ROL: DAMAGE / ATAQUE
+       ============================ */
+    if (role === 'damage') {
+      // Chequeo de precisión
+      const acc = clampNumber(ability.accuracy, 10, 100, 100);
+      const roll = Math.random() * 100;
+
+      if (roll > acc) {
+        attackerEl.classList.add('is-attacking');
+        setTimeout(() => attackerEl.classList.remove('is-attacking'), 500);
+
+        pushLog({
+          side: attackerSide,
+          type: 'miss',
+          html: `<strong>${escapeHtml(attacker.data.standName)}</strong> intenta <em>${escapeHtml(actionName)}</em> pero <span style="color:#b8b8b8;font-weight:700;">falla por precisión (${Math.round(acc)}%).</span>${cryText}`
+        });
+        return { skipTurn: false };
+      }
+      // Asegurar que siempre existan los objetos de combate
+      attacker.tempBuffs = attacker.tempBuffs || { damageMult: 1.0 };
+      defender.tempBuffs = defender.tempBuffs || { damageMult: 1.0 };
+      attacker.statusEffects = attacker.statusEffects || [];
+      defender.statusEffects = defender.statusEffects || [];
+      defender.currentShield = defender.currentShield || 0;
+
+      // Cálculo base con buff
+      const buffMult = attacker.tempBuffs?.damageMult ?? 1.0;
+      let baseDamage = Number(ability.damage) || 30;
+      const pwrBonus = PWR_BASIC_BONUS[attacker.data.stats.power] || 0;
+      baseDamage += pwrBonus * 0.6;
+      baseDamage *= buffMult;
+
+      // Terreno
+      const terrainMult = getTerrainMultiplier(attacker.data, attacker);
+      baseDamage *= terrainMult;
+
+      // Crítico
+      const crit = Math.random() < getCritChance(attacker.data.stats.precision);
+      if (crit) baseDamage *= CRIT_MULTIPLIER;
+
+      // Reducción por durabilidad del defensor
+      baseDamage *= (1 - getDurReduction(defender.data.stats.durability));
+
+      let finalDamage = Math.max(1, Math.round(baseDamage));
+
+      // --- APLICAR DAÑO con interacción de escudo reflejante ---
+      const wasReflecting = defender.reflectActive;
+      let absorbed = 0;
+
+      if (defender.currentShield > 0) {
+        absorbed = Math.min(defender.currentShield, finalDamage);
+        defender.currentShield -= absorbed;
+        finalDamage -= absorbed;
+
+        if (defender.currentShield <= 0) {
+          defender.shield = false;
+          defenderEl.classList.remove('has-shield');
+        }
+      }
+
+      // Impacto visual
+      attackerEl.classList.add('is-attacking');
+      setTimeout(() => attackerEl.classList.remove('is-attacking'), 500);
+
+      const impact = () => {
+        defender.hp = Math.max(0, defender.hp - finalDamage);
+        attacker.totalDamage += finalDamage;
+
+        defenderEl.classList.add('is-hit');
+        if (crit) defenderEl.classList.add('is-crit');
+        setTimeout(() => {
+          defenderEl.classList.remove('is-hit');
+          defenderEl.classList.remove('is-crit');
+        }, 650);
+
+        if (finalDamage > 0) showDamageFloat(defenderEl, finalDamage, crit);
+        updateHpBar(defenderSide);
+
+        // --- Efectos de estado ---
+        let effectLog = '';
+
+        if (effect === 'poison') {
+          const poisonValue = Math.round((ability.damage || 30) * POISON_RATIO);
+          defender.statusEffects.push({
+            type: 'poison',
+            duration: POISON_DURATION,
+            value: poisonValue
+          });
+          effectLog = ` <span style="color:#a5e87a;font-weight:700;">☠ Envenenado (${POISON_DURATION} turnos)</span>`;
+        } else if (effect === 'stun') {
+          const stunChance = clampNumber(acc, 10, 100, 100) * 0.65;
+          if (Math.random() * 100 <= stunChance) {
+            defender.statusEffects.push({ type: 'stun', duration: 1, value: 0 });
+            effectLog = ` <span style="color:#ffd166;font-weight:700;">⚡ Aturdido</span>`;
+          } else {
+            effectLog = ` <span style="color:var(--ink-3);">(aturdimiento falló)</span>`;
+          }
+        }
+
+        const bonusPct = Math.round((terrainMult - 1) * 100);
+        let bonusTag = '';
+        if (bonusPct > 0) bonusTag = ` <span style="color:var(--ready-hi);font-weight:700;">[+${bonusPct}% Terreno]</span>`;
+        else if (bonusPct < 0) bonusTag = ` <span style="color:#ff8a70;font-weight:700;">[${bonusPct}% Terreno]</span>`;
+
+        const critTag = crit ? ' <span style="color:var(--danger-hi);font-weight:700;">¡CRÍTICO!</span>' : '';
+        const shieldTag = absorbed > 0 ? ` <span style="color:#9ec7e0;">(${absorbed} absorbido)</span>` : '';
+
+        pushLog({
+          side: attackerSide,
+          type: crit ? 'crit' : (bonusPct > 0 ? 'bonus' : ''),
+          html: `<strong>${escapeHtml(attacker.data.standName)}</strong> usa <em>${escapeHtml(actionName)}</em> causando <span class="log-entry__dmg${crit ? ' log-entry__dmg--crit' : ''}">${finalDamage}</span> de daño.${shieldTag}${bonusTag}${critTag}${effectLog}${cryText}`
+        });
+
+        // --- Reflejo ---
+        if (wasReflecting && finalDamage > 0) {
+          const reflected = Math.round(finalDamage * REFLECT_RATIO);
+          attacker.hp = Math.max(0, attacker.hp - reflected);
+          updateHpBar(attackerSide);
+          attackerEl.classList.add('is-hit');
+          setTimeout(() => attackerEl.classList.remove('is-hit'), 600);
+          showDamageFloat(attackerEl, reflected, false);
+
+          pushLog({
+            side: defenderSide,
+            type: 'reflect',
+            html: `✧ <strong>${escapeHtml(defender.data.standName)}</strong> refleja <span class="log-entry__dmg">${reflected}</span> de daño a <strong>${escapeHtml(attacker.data.standName)}</strong>.`
+          });
+
+          if (attacker.hp <= 0) {
+            battle.finished = true;
+            pushLog({
+              side: defenderSide,
+              type: 'ko',
+              html: `¡K.O. por reflejo! <strong>${escapeHtml(defender.data.standName)}</strong> gana el combate.`
+            });
+            renderBattleUI();
+            updateActionPanel();
+            setTimeout(() => showVictoryModal(defenderSide), 900);
+            return;
+          }
+        }
+
+        // Consumir reflect (una sola vez)
+        if (wasReflecting) {
+          defender.reflectActive = false;
+        }
+
+        // --- K.O. del defensor ---
+        if (defender.hp <= 0) {
+          battle.finished = true;
+          pushLog({
+            side: attackerSide,
+            type: 'ko',
+            html: `¡K.O.! <strong>${escapeHtml(attacker.data.standName)}</strong> se alza con la victoria.`
+          });
+          renderBattleUI();
+          updateActionPanel();
+          setTimeout(() => showVictoryModal(attackerSide), 900);
+          return;
+        }
+
+        // Terminar el turno
+        battle.busy = false;
+        passTurn();
+      };
+
+      setTimeout(impact, 320);
+      return { skipTurn: true }; // ya manejamos passTurn dentro del timeout
+    }
+
+    // Fallback: no debería llegar aquí
+    return { skipTurn: false };
+  }
           /* =========================================================
      DESPERTAR REQUIEM
      Transforma al combatiente activo en su Forma Requiem vinculada.
@@ -3874,6 +4590,19 @@
       if (!ab) return;
       row.querySelector('.dual-ab-name').value = ab.name;
       row.querySelector('.dual-ab-type').value = ab.type;
+            // Repoblar el selector de efecto del dual según el tipo
+            const effSel = row.querySelector('.dual-ab-effect');
+            if (effSel) {
+              const validEffects = EFFECT_OPTIONS[ab.type] || EFFECT_OPTIONS.damage;
+              effSel.innerHTML = '';
+              for (const opt of validEffects) {
+                const el = document.createElement('option');
+                el.value = opt.value;
+                el.textContent = opt.label;
+                effSel.appendChild(el);
+              }
+              effSel.value = DEFAULT_EFFECT_BY_ROLE[ab.type];
+            }
       row.querySelector('.dual-ab-damage').value = ab.damage;
       row.querySelector('.dual-ab-cd').value = ab.cooldown;
       row.querySelector('.dual-ab-acc').value = ab.accuracy;
@@ -3958,14 +4687,24 @@
         stats[sel.dataset.stat] = sel.value;
       });
   
-      const rawAbilities = Array.from(col.querySelectorAll('.dual-ability')).map((row) => ({
-        name: (row.querySelector('.dual-ab-name').value || '').trim(),
-        type: row.querySelector('.dual-ab-type').value,
-        damage: clampNumber(row.querySelector('.dual-ab-damage').value, 15, 60, 30),
-        cooldown: clampNumber(row.querySelector('.dual-ab-cd').value, 0, 5, 1),
-        accuracy: clampNumber(row.querySelector('.dual-ab-acc').value, 10, 100, 100),
-        description: (row.querySelector('.dual-ab-desc')?.value || '').trim()
-      }));
+      const rawAbilities = Array.from(col.querySelectorAll('.dual-ability')).map((row) => {
+        const type = row.querySelector('.dual-ab-type').value;
+        const effectSel = row.querySelector('.dual-ab-effect');
+        const validEffects = (EFFECT_OPTIONS[type] || []).map((o) => o.value);
+        const effect = effectSel && validEffects.includes(effectSel.value)
+          ? effectSel.value
+          : DEFAULT_EFFECT_BY_ROLE[type];
+  
+        return {
+          name: (row.querySelector('.dual-ab-name').value || '').trim(),
+          type,
+          effect,
+          damage: clampNumber(row.querySelector('.dual-ab-damage').value, 15, 60, 30),
+          cooldown: clampNumber(row.querySelector('.dual-ab-cd').value, 0, 5, 1),
+          accuracy: clampNumber(row.querySelector('.dual-ab-acc').value, 10, 100, 100),
+          description: (row.querySelector('.dual-ab-desc')?.value || '').trim()
+        };
+      });
   
       // Solo habilidades con nombre
       const abilities = rawAbilities.filter((a) => a.name.length > 0);

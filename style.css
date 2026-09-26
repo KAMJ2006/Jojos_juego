@@ -4319,5 +4319,138 @@
   100% { opacity: 1; transform: scale(1) rotate(0); filter: brightness(1); }
 }
 
+/* ============================================================
+   SISTEMA DE EFECTOS CANÓNICOS
+   ============================================================ */
+   .ability-effect-field {
+    margin-top: 8px;
+  }
+  
+  .ability-effect-select {
+    padding: 8px 12px;
+    background: rgba(10, 8, 16, 0.7);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    color: var(--ink-0);
+    font-family: var(--font-body);
+    font-size: 0.88rem;
+    outline: none;
+    transition: all 0.18s ease;
+  }
+  
+  .ability-effect-select:focus {
+    border-color: var(--gold-1);
+    box-shadow: 0 0 0 3px rgba(230, 198, 106, 0.15);
+  }
+  
+  /* Colores por rol */
+  .ability-effect-select[data-role="damage"] { border-color: rgba(227, 92, 79, 0.55); }
+  .ability-effect-select[data-role="heal"]   { border-color: rgba(108, 209, 138, 0.55); }
+  .ability-effect-select[data-role="shield"] { border-color: rgba(158, 199, 224, 0.55); }
+  
+  /* En el modal dual, ampliar el grid del ability row para acomodar el nuevo select */
+  .dual-ability {
+    grid-template-columns: 1.4fr 1fr 1.1fr 0.8fr 0.6fr 0.8fr;
+    grid-template-areas:
+      "name type effect damage cd acc"
+      "desc desc desc desc desc desc";
+  }
+  
+  .dual-ability .dual-ab-effect { grid-area: effect; }
+  
+  @media (max-width: 900px) {
+    .dual-ability {
+      grid-template-columns: 1fr 1fr;
+      grid-template-areas:
+        "name name"
+        "type effect"
+        "damage cd"
+        "acc acc"
+        "desc desc";
+    }
+  }
+  
+  /* ============================================================
+     INDICADORES DE ESTADO EN COMBATE
+     ============================================================ */
+  .status-effects {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+  }
+  
+  .status-effect-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    font-family: var(--font-display);
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border-radius: 999px;
+    border: 1px solid currentColor;
+    animation: statusChipPulse 1.8s ease-in-out infinite;
+  }
+  
+  .status-effect-chip--poison {
+    color: #a5e87a;
+    background: rgba(120, 200, 80, 0.14);
+  }
+  
+  .status-effect-chip--stun {
+    color: #ffd166;
+    background: rgba(230, 198, 106, 0.18);
+  }
+  
+  .status-effect-chip--buff {
+    color: #ff8a70;
+    background: rgba(227, 92, 79, 0.18);
+  }
+  
+  .status-effect-chip--shield {
+    color: #9ec7e0;
+    background: rgba(158, 199, 224, 0.16);
+  }
+  
+  @keyframes statusChipPulse {
+    0%, 100% { filter: brightness(1); }
+    50%      { filter: brightness(1.35); }
+  }
+  
+  /* ============================================================
+     LOG DE EFECTOS
+     ============================================================ */
+  .log-entry--poison {
+    border-left-color: #7ac850;
+    background: rgba(120, 200, 80, 0.1);
+    color: #d6f5b8;
+  }
+  
+  .log-entry--stun {
+    border-left-color: #ffd166;
+    background: rgba(230, 198, 106, 0.12);
+    color: #fff2c4;
+  }
+  
+  .log-entry--cleanse {
+    border-left-color: #a3e8ff;
+    background: rgba(163, 232, 255, 0.12);
+    color: #e0f6ff;
+  }
+  
+  .log-entry--buff {
+    border-left-color: #ff8a70;
+    background: rgba(227, 92, 79, 0.12);
+    color: #ffd9d3;
+  }
+  
+  .log-entry--reflect {
+    border-left-color: #d9a5ff;
+    background: rgba(160, 109, 224, 0.12);
+    color: #f0d9ff;
+  }
   /* ===== UTILIDADES ===== */
   [hidden] { display: none !important; }

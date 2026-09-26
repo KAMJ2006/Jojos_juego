@@ -609,6 +609,12 @@
                   <span class="type-pill__label">Escudo</span>
                 </label>
               </div>
+              <label class="field ability-effect-field">
+                <span class="field__label">Efecto canónico</span>
+                <select class="ability-effect-select" data-skill-idx="0">
+                  <!-- Opciones dinámicas según el rol seleccionado -->
+                </select>
+              </label>
 
               <label class="field">
                 <span class="field__label">Descripción breve</span>
@@ -655,6 +661,12 @@
                   <span class="type-pill__label">Escudo</span>
                 </label>
               </div>
+              <label class="field ability-effect-field">
+                <span class="field__label">Efecto canónico</span>
+                <select class="ability-effect-select" data-skill-idx="1">
+                  <!-- Opciones dinámicas según el rol seleccionado -->
+                </select>
+              </label>
 
               <label class="field">
                 <span class="field__label">Descripción breve</span>
@@ -701,6 +713,12 @@
                   <span class="type-pill__label">Escudo</span>
                 </label>
               </div>
+              <label class="field ability-effect-field">
+                <span class="field__label">Efecto canónico</span>
+                <select class="ability-effect-select" data-skill-idx="2">
+                  <!-- Opciones dinámicas según el rol seleccionado -->
+                </select>
+              </label>
 
               <label class="field">
                 <span class="field__label">Descripción breve</span>
@@ -747,6 +765,12 @@
                     <span class="type-pill__label">Escudo</span>
                   </label>
                 </div>
+                <label class="field ability-effect-field">
+                  <span class="field__label">Efecto canónico</span>
+                  <select class="ability-effect-select" data-skill-idx="3">
+                    <!-- Opciones dinámicas según el rol seleccionado -->
+                  </select>
+                </label>
   
                 <label class="field">
                   <span class="field__label">Descripción breve</span>
@@ -794,6 +818,12 @@
                     <span class="type-pill__label">Escudo</span>
                   </label>
                 </div>
+                <label class="field ability-effect-field">
+                  <span class="field__label">Efecto canónico</span>
+                  <select class="ability-effect-select" data-skill-idx="4">
+                    <!-- Opciones dinámicas según el rol seleccionado -->
+                  </select>
+                </label>
   
                 <label class="field">
                   <span class="field__label">Descripción breve</span>
@@ -1124,6 +1154,9 @@
                   <option value="damage" selected>Ataque</option>
                   <option value="heal">Soporte</option>
                   <option value="shield">Escudo</option>
+                </select>
+                <select class="dual-ab-effect" title="Efecto canónico">
+                  <!-- Opciones dinámicas según el rol -->
                 </select>
                 <input type="number" class="dual-ab-damage" min="15" max="60" value="30" title="Daño">
                 <input type="number" class="dual-ab-cd" min="0" max="5" value="1" title="CD">
