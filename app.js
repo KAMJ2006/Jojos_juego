@@ -821,9 +821,9 @@
     C: 190,
     D: 185,
     E: 180
-  };
-  const HP_DEFAULT = 190; // fallback si la DUR no es válida
+  }
 
+  const HP_DEFAULT = 190; // fallback si la DUR no es válida
   const DAMAGE_BY_POWER = {
     A: 20,
     B: 17.5,
@@ -3640,7 +3640,6 @@
     }
     
   function computeBasicAttackDamage(attacker, defender, attackerFighter) {
-    
     const pwrStat = (attacker.stats?.power || 'C').toUpperCase();
     let damage = DAMAGE_BY_POWER[pwrStat] ?? 15;
 
