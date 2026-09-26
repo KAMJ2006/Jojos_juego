@@ -824,6 +824,15 @@
   };
   const HP_DEFAULT = 190; // fallback si la DUR no es válida
 
+  const DAMAGE_BY_POWER = {
+    A: 20,
+    B: 17.5,
+    C: 15,
+    D: 12.5,
+    E: 10
+  };
+  const BASE_DAMAGE_DEFAULT = 15;
+
   function computeHP(durability, level = DEFAULT_LEVEL) {
     const grade = String(durability || '').trim().toUpperCase();
     const base = HP_BY_DURABILITY[grade] ?? HP_DEFAULT;
@@ -3631,8 +3640,9 @@
     }
     
   function computeBasicAttackDamage(attacker, defender, attackerFighter) {
-    const pwrBonus = PWR_BASIC_BONUS[attacker.stats.power] || 0;
-    let damage = BASIC_ATTACK_BASE + pwrBonus;
+    
+    const pwrStat = (attacker.stats?.power || 'C').toUpperCase();
+    let damage = DAMAGE_BY_POWER[pwrStat] ?? 15;
 
     // Bonus de terreno (15% base, o 30% si Terreno Reclamado)
     const terrainMult = getTerrainMultiplier(attacker, attackerFighter);
