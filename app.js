@@ -4301,6 +4301,7 @@
      el turno fue consumido y no debe pasarse de nuevo.
      ========================================================= */
      function executeAbility(attackerSide, skillIndex) {
+      
       if (!battle || battle.finished) return { skipTurn: true };
   
       const attacker = battle[attackerSide];
@@ -4349,26 +4350,43 @@
       // Cooldown (guardamos CD+1 por el turno actual)
       attacker.cooldowns[skillIndex] = (Number(ability.cooldown) || 0) + 1;
 
-    // --- SEGUROS ANTI-CHISPAS ---
-    if (role === 'heal' && effect === 'heal' && attacker.hp >= attacker.maxHp) {
-      pushLog({
-        side: attackerSide,
-        type: '',
-        html: `⚠ <strong>${escapeHtml(attacker.data.standName)}</strong> intenta curar pero su HP ya está al máximo. <strong>Acción cancelada.</strong>`
-      });
-      attacker.cooldowns[skillIndex] = Math.max(0, attacker.cooldowns[skillIndex] - 1);
-      return { skipTurn: true, cancelled: true };
-    }
-
-    if (role === 'shield' && (attacker.currentShield > 0 || attacker.shield)) {
-      pushLog({
-        side: attackerSide,
-        type: '',
-        html: `⚠ <strong>${escapeHtml(attacker.data.standName)}</strong> ya tiene una defensa activa. <strong>Acción cancelada.</strong>`
-      });
-      attacker.cooldowns[skillIndex] = Math.max(0, attacker.cooldowns[skillIndex] - 1);
-      return { skipTurn: true, cancelled: true };
-    }
+        // --- SEGUROS ANTI-CHISPAS ---
+        if (role === 'heal' && effect === 'heal' && attacker.hp >= attacker.maxHp) {
+          pushLog({
+            side: attackerSide,
+            type: '',
+            html: `⚠ <strong>${escapeHtml(attacker.data.standName)}</strong> intenta curar pero su HP ya está al máximo. <strong>Acción cancelada.</strong>`
+          });
+    
+          // Devolver el cooldown consumido
+          attacker.cooldowns[skillIndex] = Math.max(0, attacker.cooldowns[skillIndex] - 1);
+    
+          // Desbloquear la UI: el jugador sigue en su turno
+          battle.busy = false;
+          renderBattleUI();
+          updateActionPanel();
+          SoundManager.playHit && null; // (opcional, sin sonido)
+    
+          return { skipTurn: true, cancelled: true };
+        }
+    
+        if (role === 'shield' && (attacker.currentShield > 0 || attacker.shield)) {
+          pushLog({
+            side: attackerSide,
+            type: '',
+            html: `⚠ <strong>${escapeHtml(attacker.data.standName)}</strong> ya tiene una defensa activa. <strong>Acción cancelada.</strong>`
+          });
+    
+          // Devolver el cooldown consumido
+          attacker.cooldowns[skillIndex] = Math.max(0, attacker.cooldowns[skillIndex] - 1);
+    
+          // Desbloquear la UI: el jugador sigue en su turno
+          battle.busy = false;
+          renderBattleUI();
+          updateActionPanel();
+    
+          return { skipTurn: true, cancelled: true };
+        }
 
     const attackerEl = attackerSide === 'p1' ? fighterP1 : fighterP2;
     const defenderEl = defenderSide === 'p1' ? fighterP1 : fighterP2;
