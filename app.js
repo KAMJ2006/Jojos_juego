@@ -2557,6 +2557,11 @@
     const spinDuration = 2200;
     const spinInterval = 90;
     const spinner = setInterval(() => {
+      // --- SFX tick de ruleta ---
+      if (window.JJA_Sound && typeof window.JJA_Sound.playTick === 'function') {
+        window.JJA_Sound.playTick();
+      }
+
       const pool = getEligibleStands();
       if (Math.random() < 0.7 && pool.length > 0) {
         const r = pickRandom(pool);
@@ -4385,6 +4390,7 @@
         const healed = attacker.hp - before;
 
         attackerEl.classList.add('is-healing');
+        SoundManager.playHeal(); // --- SFX curación ---
         setTimeout(() => attackerEl.classList.remove('is-healing'), 1000);
 
         if (healed > 0) {
@@ -4419,6 +4425,7 @@
         const healed = attacker.hp - before;
 
         attackerEl.classList.add('is-healing');
+        SoundManager.playHeal(); // --- SFX purificación (reutiliza curación) ---
         setTimeout(() => attackerEl.classList.remove('is-healing'), 1000);
 
         if (healed > 0) {
@@ -4590,6 +4597,14 @@
       setTimeout(() => attackerEl.classList.remove('is-attacking'), 500);
 
       const impact = () => {
+        // --- SFX ---
+        if (crit) {
+          SoundManager.playCrit();
+        } else {
+          SoundManager.playHit();
+        }
+        
+
         defender.hp = Math.max(0, defender.hp - finalDamage);
         attacker.totalDamage += finalDamage;
 
@@ -5071,6 +5086,258 @@
     potential: 'POT'
   };
   const RADAR_MAX = 5;
+    /* =========================================================
+     SOUND MANAGER — SFX sintetizados (Web Audio API)
+     Sin dependencias externas. Volumen balanceado. Silencioso
+     si el navegador bloquea el audio (catch silencioso).
+     ========================================================= */
+     const SoundManager = (function () {
+      let ctx = null;
+      let masterGain = null;
+      let enabled = true;
+  
+      // Volumen global maestro (0..1)
+      const MASTER_VOLUME = 0.35;
+  
+      function init() {
+        if (ctx) return ctx;
+        try {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) { enabled = false; return null; }
+          ctx = new AC();
+          masterGain = ctx.createGain();
+          masterGain.gain.value = MASTER_VOLUME;
+          masterGain.connect(ctx.destination);
+        } catch (err) {
+          enabled = false;
+          ctx = null;
+        }
+        return ctx;
+      }
+  
+      // Reanudar el contexto si el navegador lo suspendió (política de autoplay)
+      function resume() {
+        try {
+          if (ctx && ctx.state === 'suspended') {
+            ctx.resume().catch(() => {});
+          }
+        } catch (_) { /* silencioso */ }
+      }
+  
+      // Envolvente común: sube rápido y baja suave
+      function envelope(gainNode, attack, decay, peak) {
+        const now = ctx.currentTime;
+        gainNode.gain.cancelScheduledValues(now);
+        gainNode.gain.setValueAtTime(0.0001, now);
+        gainNode.gain.exponentialRampToValueAtTime(peak, now + attack);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, now + attack + decay);
+      }
+  
+      // Generador de ruido blanco corto (para impactos)
+      function makeNoiseBuffer(durationSec) {
+        const length = Math.floor(ctx.sampleRate * durationSec);
+        const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < length; i++) {
+          data[i] = (Math.random() * 2 - 1) * (1 - i / length);
+        }
+        return buffer;
+      }
+  
+      /* -------- SFX: GOLPE NORMAL -------- */
+      function playHit() {
+        if (!enabled) return;
+        try {
+          if (!init()) return;
+          resume();
+          const now = ctx.currentTime;
+  
+          // Capa 1: thump grave (seno descendente)
+          const osc = ctx.createOscillator();
+          const gOsc = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(180, now);
+          osc.frequency.exponentialRampToValueAtTime(60, now + 0.18);
+          envelope(gOsc, 0.005, 0.18, 0.9);
+          osc.connect(gOsc).connect(masterGain);
+          osc.start(now);
+          osc.stop(now + 0.22);
+  
+          // Capa 2: ruido blanco filtrado (click de impacto)
+          const noise = ctx.createBufferSource();
+          noise.buffer = makeNoiseBuffer(0.12);
+          const bp = ctx.createBiquadFilter();
+          bp.type = 'bandpass';
+          bp.frequency.value = 1200;
+          bp.Q.value = 1.2;
+          const gNoise = ctx.createGain();
+          envelope(gNoise, 0.002, 0.10, 0.35);
+          noise.connect(bp).connect(gNoise).connect(masterGain);
+          noise.start(now);
+          noise.stop(now + 0.14);
+        } catch (_) { /* silencioso */ }
+      }
+  
+      /* -------- SFX: CRÍTICO -------- */
+      function playCrit() {
+        if (!enabled) return;
+        try {
+          if (!init()) return;
+          resume();
+          const now = ctx.currentTime;
+  
+          // Base de golpe más potente
+          const osc = ctx.createOscillator();
+          const gOsc = ctx.createGain();
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(260, now);
+          osc.frequency.exponentialRampToValueAtTime(55, now + 0.28);
+          envelope(gOsc, 0.003, 0.30, 1.0);
+          osc.connect(gOsc).connect(masterGain);
+          osc.start(now);
+          osc.stop(now + 0.34);
+  
+          // Ruido agudo (shing)
+          const noise = ctx.createBufferSource();
+          noise.buffer = makeNoiseBuffer(0.2);
+          const hp = ctx.createBiquadFilter();
+          hp.type = 'highpass';
+          hp.frequency.value = 2200;
+          const gNoise = ctx.createGain();
+          envelope(gNoise, 0.002, 0.16, 0.55);
+          noise.connect(hp).connect(gNoise).connect(masterGain);
+          noise.start(now);
+          noise.stop(now + 0.24);
+  
+          // Barrido ascendente "flash" (para sensación de potencia)
+          const flash = ctx.createOscillator();
+          const gFlash = ctx.createGain();
+          flash.type = 'triangle';
+          flash.frequency.setValueAtTime(600, now);
+          flash.frequency.exponentialRampToValueAtTime(1800, now + 0.15);
+          envelope(gFlash, 0.005, 0.15, 0.28);
+          flash.connect(gFlash).connect(masterGain);
+          flash.start(now);
+          flash.stop(now + 0.22);
+        } catch (_) { /* silencioso */ }
+      }
+  
+      /* -------- SFX: CURACIÓN / SOPORTE -------- */
+      function playHeal() {
+        if (!enabled) return;
+        try {
+          if (!init()) return;
+          resume();
+          const now = ctx.currentTime;
+  
+          // Dos notas ascendentes suaves (Do → Sol)
+          [523.25, 783.99].forEach((freq, i) => {
+            const t = now + i * 0.08;
+            const osc = ctx.createOscillator();
+            const g = ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.value = freq;
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.exponentialRampToValueAtTime(0.35, t + 0.02);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+            osc.connect(g).connect(masterGain);
+            osc.start(t);
+            osc.stop(t + 0.4);
+          });
+        } catch (_) { /* silencioso */ }
+      }
+  
+      /* -------- SFX: TICK DE RULETA -------- */
+      function playTick() {
+        if (!enabled) return;
+        try {
+          if (!init()) return;
+          resume();
+          const now = ctx.currentTime;
+  
+          const osc = ctx.createOscillator();
+          const g = ctx.createGain();
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(1400, now);
+          osc.frequency.exponentialRampToValueAtTime(900, now + 0.03);
+          envelope(g, 0.001, 0.03, 0.18);
+          osc.connect(g).connect(masterGain);
+          osc.start(now);
+          osc.stop(now + 0.04);
+        } catch (_) { /* silencioso */ }
+      }
+  
+      /* -------- SFX: DETENCIÓN DE RULETA / VICTORIA -------- */
+      function playReveal() {
+        if (!enabled) return;
+        try {
+          if (!init()) return;
+          resume();
+          const now = ctx.currentTime;
+  
+          // Acorde ascendente (Do - Mi - Sol)
+          [523.25, 659.25, 783.99].forEach((freq, i) => {
+            const t = now + i * 0.06;
+            const osc = ctx.createOscillator();
+            const g = ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.value = freq;
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.exponentialRampToValueAtTime(0.4, t + 0.02);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+            osc.connect(g).connect(masterGain);
+            osc.start(t);
+            osc.stop(t + 0.55);
+          });
+        } catch (_) { /* silencioso */ }
+      }
+  
+      /* -------- CONTROLES PÚBLICOS -------- */
+      function setVolume(v) {
+        try {
+          if (!init()) return;
+          const clamped = Math.max(0, Math.min(1, Number(v) || 0));
+          masterGain.gain.value = clamped;
+        } catch (_) { /* silencioso */ }
+      }
+  
+      function setEnabled(state) {
+        enabled = !!state;
+      }
+  
+      function isEnabled() {
+        return enabled;
+      }
+  
+      // Desbloquear el AudioContext en la primera interacción del usuario
+      function unlock() {
+        try {
+          if (!init()) return;
+          resume();
+        } catch (_) { /* silencioso */ }
+      }
+  
+      return {
+        playHit,
+        playCrit,
+        playHeal,
+        playTick,
+        playReveal,
+        setVolume,
+        setEnabled,
+        isEnabled,
+        unlock
+      };
+    })();
+  
+    // Desbloqueo perezoso: la primera interacción real con el documento
+    // habilita el AudioContext en navegadores con autoplay restringido.
+    ['click', 'keydown', 'touchstart'].forEach((evt) => {
+      document.addEventListener(evt, function once() {
+        SoundManager.unlock();
+        document.removeEventListener(evt, once);
+      }, { once: true, passive: true });
+    });
 
   /* =========================================================
      TOOLTIP — REFS DOM
