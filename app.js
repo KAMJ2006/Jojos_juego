@@ -639,6 +639,86 @@
     updateTournamentStatus();
     bindModule4Events();
   }
+    /* =========================================================
+     ADMIN — REVIVIR / REINCORPORAR UN STAND AL TORNEO
+     ------------------------------------------------------------
+     - Acepta: id del Stand | nombre del Stand | nombre del artista.
+     - Restaura: tournamentState = WAITING, isDefeated = false,
+       defeatedAt = null, HP al máximo, y opcionalmente reinicia
+       los contadores de daño/combates si se solicita.
+     - Persiste en localStorage. NO reinicia el torneo global.
+     ========================================================= */
+     function reviveStand(standIdOrName) {
+      if (!standIdOrName) {
+        toast('Indica un id, nombre de Stand o nombre de artista.', 'error');
+        return null;
+      }
+  
+      const needle = String(standIdOrName).trim();
+      const lc = needle.toLowerCase();
+  
+      // Buscar por id, nombre de Stand o nombre de artista (case-insensitive)
+      let idx = roster.findIndex((s) => s.id === needle);
+      if (idx < 0) {
+        idx = roster.findIndex((s) =>
+          (s.standName || '').trim().toLowerCase() === lc ||
+          (s.artistName || '').trim().toLowerCase() === lc
+        );
+      }
+      // Fallback: coincidencia parcial por nombre de Stand
+      if (idx < 0) {
+        idx = roster.findIndex((s) =>
+          (s.standName || '').toLowerCase().includes(lc)
+        );
+      }
+  
+      if (idx < 0) {
+        toast(`No se encontró ningún Stand que coincida con "${needle}".`, 'error');
+        return null;
+      }
+  
+      const stand = roster[idx];
+  
+      // Restaurar estado de torneo
+      stand.tournamentState = STAND_STATE.WAITING;
+      stand.isDefeated = false;
+      stand.defeatedAt = null;
+  
+      // Restaurar HP al máximo
+      const maxHp = computeHP(stand.stats.durability, stand.level || DEFAULT_LEVEL);
+      stand.lastHp = maxHp;
+  
+      // Refrescar updatedAt
+      stand.updatedAt = Date.now();
+  
+      // Persistir sin reiniciar el torneo
+      saveRoster();
+      saveMode();
+  
+      // Refrescar UI
+      renderGallery();
+      updateTournamentStatus();
+      updateReadyButton();
+  
+      toast(`🔄 ${stand.standName} (${stand.artistName}) reincorporado al torneo.`, 'success');
+      console.log(`[ADMIN] Stand revivido: ${stand.standName} — estado WAITING, HP ${maxHp}/${maxHp}`);
+      return stand;
+    }
+  
+    /* Variante extendida: opcionalmente limpia daño/combates acumulados */
+    function reviveStandClean(standIdOrName) {
+      const stand = reviveStand(standIdOrName);
+      if (!stand) return null;
+      const idx = roster.findIndex((s) => s.id === stand.id);
+      if (idx >= 0) {
+        roster[idx].tournamentDamage = 0;
+        roster[idx].tournamentBattles = 0;
+        saveRoster();
+        renderGallery();
+        updateTournamentStatus();
+      }
+      return stand;
+    }
 
     /* =========================================================
        ESTADO
@@ -963,9 +1043,12 @@
           ${cry}
           <div class="radar-chart radar-chart--card" data-radar-for="${escapeHtml(stand.id)}"></div>
           <div class="stand-card__actions">
-            <button type="button" class="btn btn--ghost" data-action="edit">✎ Editar</button>
-            <button type="button" class="btn btn--danger" data-action="delete">✕ Eliminar</button>
-          </div>
+          <button type="button" class="btn btn--ghost" data-action="edit">✎ Editar</button>
+          ${(state === STAND_STATE.RETIRED || stand.isDefeated) ? `
+            <button type="button" class="btn btn--revive" data-action="revive" title="Reincorporar al torneo">🔄 Revivir</button>
+          ` : ''}
+          <button type="button" class="btn btn--danger" data-action="delete">✕ Eliminar</button>
+        </div>
         </div>
       `;
   
@@ -977,7 +1060,17 @@
   
       card.querySelector('[data-action="edit"]').addEventListener('click', () => openModal(stand.id));
       card.querySelector('[data-action="delete"]').addEventListener('click', () => deleteStand(stand.id));
+      card.querySelector('[data-action="edit"]').addEventListener('click', () => openModal(stand.id));
+      card.querySelector('[data-action="delete"]').addEventListener('click', () => deleteStand(stand.id));
   
+      // Bind del botón Revivir (solo si existe)
+      const reviveBtn = card.querySelector('[data-action="revive"]');
+      if (reviveBtn) {
+        reviveBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          reviveStand(stand.id);
+        });
+      }
       return card;
     }
 
@@ -3793,6 +3886,7 @@
           const ability = attacker.data.abilities[skillIndex];
           if (!ability || (attacker.cooldowns && attacker.cooldowns[skillIndex] > 0)) {
             battle.busy = false;
+            updateActionPanel();
             return;
           }
       
@@ -4595,14 +4689,18 @@
 
       let finalDamage = Math.max(1, Math.round(baseDamage));
 
-      // --- APLICAR DAÑO con interacción de escudo reflejante ---
+                  // --- APLICAR DAÑO con interacción de escudo reflejante ---
+      // REGLA: el escudo absorbe hasta el 50% del daño entrante.
+      // El otro 50% penetra directamente al HP del defensor.
       const wasReflecting = defender.reflectActive;
       let absorbed = 0;
+      let damageToHp = finalDamage;
 
       if (defender.currentShield > 0) {
-        absorbed = Math.min(defender.currentShield, finalDamage);
-        defender.currentShield -= absorbed;
-        finalDamage -= absorbed;
+        const maxAbsorb = Math.round(finalDamage * 0.5);
+        absorbed = Math.min(defender.currentShield, maxAbsorb);
+        defender.currentShield = Math.max(0, defender.currentShield - absorbed);
+        damageToHp = Math.max(0, finalDamage - absorbed);
 
         if (defender.currentShield <= 0) {
           defender.shield = false;
@@ -4621,10 +4719,9 @@
         } else {
           SoundManager.playHit();
         }
-        
 
-        defender.hp = Math.max(0, defender.hp - finalDamage);
-        attacker.totalDamage += finalDamage;
+        defender.hp = Math.max(0, defender.hp - damageToHp);
+        attacker.totalDamage += damageToHp;
 
         defenderEl.classList.add('is-hit');
         if (crit) defenderEl.classList.add('is-crit');
@@ -4633,7 +4730,7 @@
           defenderEl.classList.remove('is-crit');
         }, 650);
 
-        if (finalDamage > 0) showDamageFloat(defenderEl, finalDamage, crit);
+                if (damageToHp > 0) showDamageFloat(defenderEl, damageToHp, crit);
         updateHpBar(defenderSide);
 
         // --- Efectos de estado ---
@@ -4683,7 +4780,9 @@
         else if (bonusPct < 0) bonusTag = ` <span style="color:#ff8a70;font-weight:700;">[${bonusPct}% Terreno${affinityDetail}]</span>`;
 
         const critTag = crit ? ' <span style="color:var(--danger-hi);font-weight:700;">¡CRÍTICO!</span>' : '';
-        const shieldTag = absorbed > 0 ? ` <span style="color:#9ec7e0;">(${absorbed} absorbido)</span>` : '';
+        const shieldTag = absorbed > 0
+        ? ` <span style="color:#9ec7e0;">(${absorbed} absorbido · ${damageToHp} al HP)</span>`
+        : '';
 
         pushLog({
           side: attackerSide,
@@ -5843,4 +5942,31 @@
     getBattle: () => battle,
     applyEventToBattle: applyEventToBattle
   };
+  document.addEventListener('DOMContentLoaded', init);
+      /* =========================================================
+     API PÚBLICA PARA MÓDULOS EXTERNOS (events-roulette.js)
+     ========================================================= */
+  window.JJA_App = {
+    getBattle: () => battle,
+    applyEventToBattle: applyEventToBattle
+  };
+    /* =========================================================
+     API DE ADMINISTRACIÓN (consola del navegador)
+     Uso desde DevTools:
+       window.reviveStand('Star Platinum')
+       window.reviveStandClean('Jotaro')
+       window.reviveStand('id-del-stand')
+     ========================================================= */
+     window.reviveStand = reviveStand;
+     window.reviveStandClean = reviveStandClean;
+     window.listTournamentStates = function () {
+       console.table(roster.map((s) => ({
+         id: s.id,
+         stand: s.standName,
+         artist: s.artistName,
+         state: s.tournamentState,
+         isDefeated: s.isDefeated
+       })));
+      }
   })();
+  

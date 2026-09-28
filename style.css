@@ -3142,6 +3142,24 @@
     .mode-selector { flex-direction: column; align-items: stretch; }
     .mode-btn { min-width: 0; width: 100%; }
   }
+  /* ============================================================
+   BOTÓN REVIVIR (ADMIN)
+   ============================================================ */
+.btn--revive {
+  background: linear-gradient(180deg, rgba(79, 174, 106, 0.24), rgba(79, 174, 106, 0.08));
+  border-color: var(--ready-hi);
+  color: #d6f5df;
+  font-size: 0.6rem;
+  padding: 6px 8px;
+  transition: all 0.18s ease;
+}
+
+.btn--revive:hover {
+  background: linear-gradient(180deg, rgba(79, 174, 106, 0.42), rgba(79, 174, 106, 0.16));
+  border-color: #a3e8b8;
+  box-shadow: 0 0 14px rgba(108, 209, 138, 0.55);
+  transform: translateY(-1px);
+}
 
   /* ============================================================
    RADAR CHART HEXAGONAL (JOJO STATS)
