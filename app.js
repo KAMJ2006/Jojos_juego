@@ -639,71 +639,129 @@
     updateTournamentStatus();
     bindModule4Events();
   }
-    /* =========================================================
-     ADMIN — REVIVIR / REINCORPORAR UN STAND AL TORNEO
+      /* =========================================================
+     ADMIN — REVIVIR / REINCORPORAR UN STAND COMO GANADOR
      ------------------------------------------------------------
-     - Acepta: id del Stand | nombre del Stand | nombre del artista.
-     - Restaura: tournamentState = WAITING, isDefeated = false,
-       defeatedAt = null, HP al máximo, y opcionalmente reinicia
-       los contadores de daño/combates si se solicita.
-     - Persiste en localStorage. NO reinicia el torneo global.
+     - Asigna directamente estado WINNER para que aparezca en la
+       ruleta de la fase de ganadores.
+     - Acepta: id, nombre del Stand o nombre del artista.
+     - Restaura HP al máximo y limpia marcas de retirado/derrotado.
+     - Persiste en localStorage. NO reinicia el torneo.
      ========================================================= */
-     function reviveStand(standIdOrName) {
-      if (!standIdOrName) {
-        toast('Indica un id, nombre de Stand o nombre de artista.', 'error');
+  function reviveStand(standIdOrName) {
+    if (!standIdOrName) {
+      toast('Indica un id, nombre de Stand o nombre de artista.', 'error');
+      return null;
+    }
+
+    const needle = String(standIdOrName).trim();
+    const lc = needle.toLowerCase();
+
+    // Buscar por id, nombre de Stand o nombre de artista
+    let idx = roster.findIndex((s) => s.id === needle);
+    if (idx < 0) {
+      idx = roster.findIndex((s) =>
+        (s.standName || '').trim().toLowerCase() === lc ||
+        (s.artistName || '').trim().toLowerCase() === lc
+      );
+    }
+    if (idx < 0) {
+      idx = roster.findIndex((s) =>
+        (s.standName || '').toLowerCase().includes(lc)
+      );
+    }
+
+    if (idx < 0) {
+      toast(`No se encontró ningún Stand que coincida con "${needle}".`, 'error');
+      return null;
+    }
+
+    const stand = roster[idx];
+
+    // --- Restauración directa a GANADOR ---
+    stand.tournamentState = STAND_STATE.WINNER;   // 'winner'
+    stand.isRetired = false;
+    stand.isDefeated = false;
+    stand.defeatedAt = null;
+
+    // HP al máximo
+    const maxHp = computeHP(stand.stats.durability, stand.level || DEFAULT_LEVEL);
+    stand.lastHp = maxHp;
+    stand.hp = maxHp;
+
+    stand.updatedAt = Date.now();
+
+    // --- Persistencia ---
+    if (typeof saveRoster === 'function') saveRoster();
+    if (typeof saveMode === 'function') saveMode();
+
+    // --- Refrescar UI ---
+    if (typeof renderGallery === 'function') renderGallery();
+    if (typeof updateTournamentStatus === 'function') updateTournamentStatus();
+    if (typeof updateReadyButton === 'function') updateReadyButton();
+
+    toast(`🏆 ${stand.standName} (${stand.artistName}) reincorporado como GANADOR.`, 'success');
+    console.log(`[ADMIN] ${stand.standName} — estado WINNER, HP ${maxHp}/${maxHp}`);
+    return stand;
+  }
+    /* =========================================================
+     ADMIN — PROMOVER STAND A WINNER (UN CLIC)
+     ------------------------------------------------------------
+     - Fuerza tournamentState = WINNER.
+     - Limpia marcas de retirado/derrotado.
+     - Restaura HP al máximo.
+     - Persiste y refresca UI. NO reinicia el torneo.
+     ========================================================= */
+     function setStandAsWinner(standId) {
+      if (!standId) {
+        toast('ID de Stand no válido.', 'error');
         return null;
       }
   
-      const needle = String(standIdOrName).trim();
-      const lc = needle.toLowerCase();
-  
-      // Buscar por id, nombre de Stand o nombre de artista (case-insensitive)
-      let idx = roster.findIndex((s) => s.id === needle);
+      const idx = roster.findIndex((s) => s.id === standId);
       if (idx < 0) {
-        idx = roster.findIndex((s) =>
-          (s.standName || '').trim().toLowerCase() === lc ||
-          (s.artistName || '').trim().toLowerCase() === lc
-        );
-      }
-      // Fallback: coincidencia parcial por nombre de Stand
-      if (idx < 0) {
-        idx = roster.findIndex((s) =>
-          (s.standName || '').toLowerCase().includes(lc)
-        );
-      }
-  
-      if (idx < 0) {
-        toast(`No se encontró ningún Stand que coincida con "${needle}".`, 'error');
+        toast('Stand no encontrado en el roster.', 'error');
         return null;
       }
   
       const stand = roster[idx];
   
-      // Restaurar estado de torneo
-      stand.tournamentState = STAND_STATE.WAITING;
+      // --- Forzar estado WINNER ---
+      stand.tournamentState = STAND_STATE.WINNER;
+      stand.isRetired = false;
       stand.isDefeated = false;
       stand.defeatedAt = null;
   
-      // Restaurar HP al máximo
+      // HP al máximo
       const maxHp = computeHP(stand.stats.durability, stand.level || DEFAULT_LEVEL);
       stand.lastHp = maxHp;
+      stand.hp = maxHp;
   
-      // Refrescar updatedAt
       stand.updatedAt = Date.now();
   
-      // Persistir sin reiniciar el torneo
-      saveRoster();
-      saveMode();
+      // --- Persistencia ---
+      if (typeof saveRoster === 'function') saveRoster();
+      if (typeof saveMode === 'function') saveMode();
   
-      // Refrescar UI
-      renderGallery();
-      updateTournamentStatus();
-      updateReadyButton();
+      // --- Refrescar UI ---
+      if (typeof renderGallery === 'function') renderGallery();
+      if (typeof updateTournamentStatus === 'function') updateTournamentStatus();
   
-      toast(`🔄 ${stand.standName} (${stand.artistName}) reincorporado al torneo.`, 'success');
-      console.log(`[ADMIN] Stand revivido: ${stand.standName} — estado WAITING, HP ${maxHp}/${maxHp}`);
+      // Si estamos en fase WAITING y ya hay ≥2 ganadores, ofrecer transición
+      if (currentMode === 'royale' &&
+          tournamentPhase === PHASE.WAITING &&
+          roster.filter((s) => s.tournamentState === STAND_STATE.WINNER).length >= 2) {
+        checkTournamentEnd();
+        updateTournamentStatus();
+      }
+  
+      toast(`👑 ${stand.standName} promovido a WINNER.`, 'success');
+      console.log(`[ADMIN] ${stand.standName} — estado WINNER, HP ${maxHp}/${maxHp}`);
       return stand;
     }
+  
+    // Exponer globalmente para uso desde consola
+    window.setStandAsWinner = setStandAsWinner;
   
     /* Variante extendida: opcionalmente limpia daño/combates acumulados */
     function reviveStandClean(standIdOrName) {
@@ -1037,20 +1095,31 @@
           <!-- PARTE INFERIOR: badge Requiem flotante -->
           ${requiemBadge ? `<div class="stand-card__bottom">${requiemBadge}</div>` : ''}
         </div>
-        <div class="stand-card__body">
-          <p class="stand-card__owner">${escapeHtml(stand.artistName)}</p>
-          <h3 class="stand-card__name">${escapeHtml(stand.standName)}</h3>
-          ${cry}
-          <div class="radar-chart radar-chart--card" data-radar-for="${escapeHtml(stand.id)}"></div>
-          <div class="stand-card__actions">
-          <button type="button" class="btn btn--ghost" data-action="edit">✎ Editar</button>
-          ${(state === STAND_STATE.RETIRED || stand.isDefeated) ? `
-            <button type="button" class="btn btn--revive" data-action="revive" title="Reincorporar al torneo">🔄 Revivir</button>
-          ` : ''}
-          <button type="button" class="btn btn--danger" data-action="delete">✕ Eliminar</button>
-        </div>
+        <div class="stand-card__actions">
+        <button type="button" class="btn btn--ghost" data-action="edit">✎ Editar</button>
+
+        ${(state !== STAND_STATE.WINNER) ? `
+        <button type="button" class="btn btn--winner-up" data-action="make-winner"
+          title="Promover a Winner al instante">👑 hacer Winner</button>
+      ` : ''}
+
+        ${(state === STAND_STATE.RETIRED || stand.isDefeated) ? `
+          <button type="button" class="btn btn--revive" data-action="revive"
+            title="Reincorporar como Ganador">🏆 Revivir como Ganador</button>
+        ` : ''}
+
+        <button type="button" class="btn btn--danger" data-action="delete">✕ Eliminar</button>
+      </div>
         </div>
       `;
+          // Bind del botón Hacer Winner (solo si existe)
+    const makeWinnerBtn = card.querySelector('[data-action="make-winner"]');
+    if (makeWinnerBtn) {
+      makeWinnerBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        setStandAsWinner(stand.id);
+      });
+    }
   
       // Radar SVG
       const radarSlot = card.querySelector(`[data-radar-for="${stand.id}"]`);
@@ -2327,10 +2396,25 @@
       </div>
     `;
 
-    card.querySelector('[data-action="edit"]')
-      .addEventListener('click', () => openStageModal(stage.id));
-    card.querySelector('[data-action="delete"]')
-      .addEventListener('click', () => deleteStage(stage.id));
+    card.querySelector('[data-action="edit"]').addEventListener('click', () => openModal(stand.id));
+    card.querySelector('[data-action="delete"]').addEventListener('click', () => deleteStand(stand.id));
+
+    // Bind del botón Revivir (solo si existe)
+    const reviveBtn = card.querySelector('[data-action="revive"]');
+    if (reviveBtn) {
+      reviveBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        reviveStand(stand.id);
+        // Si el torneo está en fase WAITING y ya hay ganadores suficientes,
+        // sugerimos al streamer pasar a fase de ganadores.
+        if (currentMode === 'royale' &&
+            tournamentPhase === PHASE.WAITING &&
+            roster.filter((s) => s.tournamentState === STAND_STATE.WINNER).length >= 2) {
+          checkTournamentEnd();
+          updateTournamentStatus();
+        }
+      });
+    }
 
     return card;
   }
