@@ -153,60 +153,76 @@
       /* =========================================================
      WIDGET CIRCULAR CON COUNTDOWN
      ========================================================= */
-  function showNotice() {
-    const widget = els.noticeBar;
-    if (!widget) return;
+     function showNotice() {
+      const widget = els.noticeBar;
+      if (!widget) return;
 
-    widget.hidden = false;
-    widget.classList.remove('is-urgent');
-    widgetSecondsLeft = WIDGET_TIMEOUT_S;
+      widget.hidden = false;
+      widget.classList.remove('is-urgent');
+      widgetSecondsLeft = WIDGET_TIMEOUT_S;
 
-    // Preparar anillo
-    if (widgetRingEl) {
-      widgetRingEl.style.strokeDasharray = String(RING_CIRCUMFERENCE);
-      widgetRingEl.style.strokeDashoffset = '0';
-    }
-    if (widgetTimerEl) widgetTimerEl.textContent = String(widgetSecondsLeft);
+      // 🔊 SFX: arrancar el reloj en loop mientras el widget está visible
+      try {
+        if (window.JJA_Sound && typeof window.JJA_Sound.startClock === 'function') {
+          window.JJA_Sound.startClock();
+        }
+      } catch (_) {}
 
-    // Tick cada segundo
-    if (widgetTimerHandle) clearInterval(widgetTimerHandle);
-    widgetTimerHandle = setInterval(() => {
-      widgetSecondsLeft -= 1;
-      if (widgetTimerEl) widgetTimerEl.textContent = String(Math.max(0, widgetSecondsLeft));
-
-      // Anillo: de 0 (completo) → circunferencia (vacío)
+      // Preparar anillo
       if (widgetRingEl) {
-        const progress = 1 - (widgetSecondsLeft / WIDGET_TIMEOUT_S);
-        widgetRingEl.style.strokeDashoffset = String(RING_CIRCUMFERENCE * progress);
+        widgetRingEl.style.strokeDasharray = String(RING_CIRCUMFERENCE);
+        widgetRingEl.style.strokeDashoffset = '0';
       }
+      if (widgetTimerEl) widgetTimerEl.textContent = String(widgetSecondsLeft);
 
-      // Urgencia últimos 3s
-      if (widgetSecondsLeft <= 3) widget.classList.add('is-urgent');
+      // Tick cada segundo
+      if (widgetTimerHandle) clearInterval(widgetTimerHandle);
+      widgetTimerHandle = setInterval(() => {
+        widgetSecondsLeft -= 1;
+        if (widgetTimerEl) widgetTimerEl.textContent = String(Math.max(0, widgetSecondsLeft));
 
-      // Timeout: auto-abrir el modal
-      if (widgetSecondsLeft <= 0) {
+        // Anillo: de 0 (completo) → circunferencia (vacío)
+        if (widgetRingEl) {
+          const progress = 1 - (widgetSecondsLeft / WIDGET_TIMEOUT_S);
+          widgetRingEl.style.strokeDashoffset = String(RING_CIRCUMFERENCE * progress);
+        }
+
+        // Urgencia últimos 3s
+        if (widgetSecondsLeft <= 3) widget.classList.add('is-urgent');
+
+        // Timeout: auto-abrir el modal
+        if (widgetSecondsLeft <= 0) {
+          clearInterval(widgetTimerHandle);
+          widgetTimerHandle = null;
+          hideNotice();
+          // Auto-trigger: abre el modal y dispara el giro automáticamente
+          setTimeout(() => {
+            openModal();
+            setTimeout(spin, 200);
+          }, 120);
+        }
+      }, 1000);
+    }
+
+    function hideNotice() {
+      const widget = els.noticeBar;
+      if (!widget) return;
+
+      widget.hidden = true;
+      widget.classList.remove('is-urgent');
+
+      if (widgetTimerHandle) {
         clearInterval(widgetTimerHandle);
         widgetTimerHandle = null;
-        hideNotice();
-        // Auto-trigger: abre el modal y dispara el giro automáticamente
-        setTimeout(() => {
-          openModal();
-          setTimeout(spin, 200);
-        }, 120);
       }
-    }, 1000);
-  }
 
-  function hideNotice() {
-    const widget = els.noticeBar;
-    if (!widget) return;
-    widget.hidden = true;
-    widget.classList.remove('is-urgent');
-    if (widgetTimerHandle) {
-      clearInterval(widgetTimerHandle);
-      widgetTimerHandle = null;
+      // 🔊 SFX: detener el reloj inmediatamente
+      try {
+        if (window.JJA_Sound && typeof window.JJA_Sound.stopClock === 'function') {
+          window.JJA_Sound.stopClock();
+        }
+      } catch (_) {}
     }
-  }
   
       /* =========================================================
      CONSTRUCCIÓN DE LA RUEDA CIRCULAR
@@ -309,6 +325,12 @@
        function openModal() {
         if (!els.modalBackdrop) return;
         if (isSpinning) return;
+         // 🔊 SFX: detener el reloj al abrir el modal
+      try {
+        if (window.JJA_Sound && typeof window.JJA_Sound.stopClock === 'function') {
+          window.JJA_Sound.stopClock();
+        }
+      } catch (_) {}
     
         selectedEvent = null;
         renderModalEmpty();
@@ -324,6 +346,13 @@
         state.pendingNotice = false;
         hideNotice();
         isSpinning = false;
+        // 🔊 SFX: cortar cualquier audio de ruleta o reloj pendiente
+      try {
+        if (window.JJA_Sound) {
+          if (typeof window.JJA_Sound.stopRoulette === 'function') window.JJA_Sound.stopRoulette();
+          if (typeof window.JJA_Sound.stopClock === 'function') window.JJA_Sound.stopClock();
+        }
+      } catch (_) {}
     
         // Reset botones por si se reabre
         const btnSpin = document.getElementById('eventBtnSpin');
@@ -390,113 +419,119 @@
      GIRO CON FRENADO FÍSICO
      ========================================================= */
      async function spin() {
-        if (isSpinning) return;
-        isSpinning = true;
-    
-        // --- FLUJO DE BOTONES ---
-        const btnSpin  = document.getElementById('eventBtnSpin');
-        const btnApply = els.btnApply;
-        if (btnSpin) {
-          btnSpin.disabled = true;
-          btnSpin.classList.add('is-spinning');
-        }
-        if (btnApply) {
-          btnApply.hidden = true;   // se oculta hasta que termine
-          btnApply.disabled = true;
-        }
-        if (els.btnToggleDesc) els.btnToggleDesc.hidden = true;
-    
-        // Limpiar ganador previo
-        if (wheelSlicesGroup) {
-          wheelSlicesGroup.querySelectorAll('.is-winner').forEach((n) => n.classList.remove('is-winner'));
-        }
-    
-        // Estado visual inicial
-        if (els.revealName) els.revealName.textContent = '···';
-        if (els.revealIcon) els.revealIcon.textContent = '🌀';
-        if (els.revealShort) els.revealShort.textContent = 'DODODO...';
-        if (els.revealLong) els.revealLong.hidden = true;
-        if (els.revealRarity) {
-          els.revealRarity.textContent = '';
-          els.revealRarity.style.color = '';
-          els.revealRarity.style.borderColor = '';
-        }
-        const revealBox = document.getElementById('eventReveal');
-        if (revealBox) revealBox.classList.remove('is-revealed');
-    
-        // --- ELEGIR GANADOR ---
-        const winner = pickRandomEvent();
-        selectedEvent = winner;
-    
-        const totalEvents = EVENTS.length;
-        const winnerIdx = EVENTS.findIndex((e) => e.id === winner.id);
-        const anglePer = 360 / totalEvents;
-    
-        // El gajo i ocupa [i*anglePer - 90, (i+1)*anglePer - 90] en coords SVG.
-        // La aguja está fija en 0° (arriba) => dirección -90° en coords estándar.
-        // Queremos que el centro del gajo ganador caiga bajo la aguja.
-        const sliceCenter = winnerIdx * anglePer + anglePer / 2;
-    
-        // Para llevar ese centro a la posición superior, rotamos por:
-        //   targetRotation = 360 - sliceCenter  (mod 360)
-        const baseTarget = ((360 - sliceCenter) % 360 + 360) % 360;
-    
-        // Estado actual de rotación del grupo
-        const current = currentRotation % 360;
-        const deltaToTarget = ((baseTarget - current) % 360 + 360) % 360;
-    
-        // Vueltas completas (5-7) + delta + jitter ±20% del gajo
-        const fullSpins = 5 + Math.floor(Math.random() * 3);
-        const jitter = (Math.random() - 0.5) * (anglePer * 0.4);
-        const totalRotation = currentRotation + fullSpins * 360 + deltaToTarget + jitter;
-    
-        // --- APLICAR TRANSICIÓN AL <g> ---
-        const wheelFrame = document.querySelector('.wheel-frame');
-        if (wheelFrame) wheelFrame.classList.add('is-spinning');
-    
-        if (wheelSlicesGroup) {
-          // Aseguramos la transición sobre el grupo
-          wheelSlicesGroup.style.transition = 'transform 5.4s cubic-bezier(0.15, 0.72, 0.20, 1)';
-          wheelSlicesGroup.style.transformOrigin = '150px 150px';
-          wheelSlicesGroup.style.transformBox = 'view-box';
-    
-          // Forzar reflow
-          void wheelSlicesGroup.getBoundingClientRect();
-    
-          // Rotación final (aplicada como CSS transform sobre el grupo)
-          wheelSlicesGroup.style.transform = `rotate(${totalRotation}deg)`;
-    
-          currentRotation = totalRotation;
-        }
-    
-        // --- ESPERAR FIN ---
-        await new Promise((resolve) => setTimeout(resolve, 5500));
-    
-        // --- LOCK + REVEAL ---
-        if (wheelFrame) {
-          wheelFrame.classList.remove('is-spinning');
-          wheelFrame.classList.add('is-locked');
-        }
-    
-        if (wheelSlicesGroup) {
-          const winnerPath = wheelSlicesGroup.querySelector(`[data-event-id="${winner.id}"]`);
-          if (winnerPath) winnerPath.classList.add('is-winner');
-        }
-    
-        revealWinner(winner);
-    
-        isSpinning = false;
-    
-        // --- BOTONES FINALES ---
-        if (btnSpin) {
-          btnSpin.classList.remove('is-spinning');
-          btnSpin.hidden = true;      // desaparece para evitar rerolls
-        }
-        if (btnApply) {
-          btnApply.hidden = false;    // recién ahora aparece
-          btnApply.disabled = false;
-        }
+      if (isSpinning) return;
+      isSpinning = true;
+
+      // --- FLUJO DE BOTONES ---
+      const btnSpin  = document.getElementById('eventBtnSpin');
+      const btnApply = els.btnApply;
+      if (btnSpin) {
+        btnSpin.disabled = true;
+        btnSpin.classList.add('is-spinning');
       }
+      if (btnApply) {
+        btnApply.hidden = true;
+        btnApply.disabled = true;
+      }
+      if (els.btnToggleDesc) els.btnToggleDesc.hidden = true;
+
+      if (wheelSlicesGroup) {
+        wheelSlicesGroup.querySelectorAll('.is-winner').forEach((n) => n.classList.remove('is-winner'));
+      }
+
+      // Estado visual inicial
+      if (els.revealName) els.revealName.textContent = '···';
+      if (els.revealIcon) els.revealIcon.textContent = '🌀';
+      if (els.revealShort) els.revealShort.textContent = 'DODODO...';
+      if (els.revealLong) els.revealLong.hidden = true;
+      if (els.revealRarity) {
+        els.revealRarity.textContent = '';
+        els.revealRarity.style.color = '';
+        els.revealRarity.style.borderColor = '';
+      }
+      const revealBox = document.getElementById('eventReveal');
+      if (revealBox) revealBox.classList.remove('is-revealed');
+
+      // --- ELEGIR GANADOR ---
+      const winner = pickRandomEvent();
+      selectedEvent = winner;
+
+      const totalEvents = EVENTS.length;
+      const winnerIdx = EVENTS.findIndex((e) => e.id === winner.id);
+      const anglePer = 360 / totalEvents;
+
+      const sliceCenter = winnerIdx * anglePer + anglePer / 2;
+      const baseTarget = ((360 - sliceCenter) % 360 + 360) % 360;
+
+      const current = currentRotation % 360;
+      const deltaToTarget = ((baseTarget - current) % 360 + 360) % 360;
+
+      const fullSpins = 5 + Math.floor(Math.random() * 3);
+      const jitter = (Math.random() - 0.5) * (anglePer * 0.4);
+      const totalRotation = currentRotation + fullSpins * 360 + deltaToTarget + jitter;
+
+      // --- APLICAR TRANSICIÓN ---
+      const wheelFrame = document.querySelector('.wheel-frame');
+      if (wheelFrame) wheelFrame.classList.add('is-spinning');
+
+      // Duración fija del giro: 6 segundos
+      const SPIN_DURATION_MS = 6000;
+      const SPIN_DURATION_S = SPIN_DURATION_MS / 1000;
+
+      if (wheelSlicesGroup) {
+        wheelSlicesGroup.style.transition = `transform ${SPIN_DURATION_S}s cubic-bezier(0.15, 0.72, 0.20, 1)`;
+        wheelSlicesGroup.style.transformOrigin = '150px 150px';
+        wheelSlicesGroup.style.transformBox = 'view-box';
+
+        void wheelSlicesGroup.getBoundingClientRect();
+
+        wheelSlicesGroup.style.transform = `rotate(${totalRotation}deg)`;
+
+        currentRotation = totalRotation;
+      }
+
+      // 🔊 SFX: arrancar giro de ruleta (6 s)
+      try {
+        if (window.JJA_Sound && typeof window.JJA_Sound.startRoulette === 'function') {
+          window.JJA_Sound.startRoulette(SPIN_DURATION_MS);
+        }
+      } catch (_) {}
+
+      // --- ESPERAR FIN ---
+      await new Promise((resolve) => setTimeout(resolve, SPIN_DURATION_MS));
+
+      // --- LOCK + REVEAL ---
+      if (wheelFrame) {
+        wheelFrame.classList.remove('is-spinning');
+        wheelFrame.classList.add('is-locked');
+      }
+
+      if (wheelSlicesGroup) {
+        const winnerPath = wheelSlicesGroup.querySelector(`[data-event-id="${winner.id}"]`);
+        if (winnerPath) winnerPath.classList.add('is-winner');
+      }
+
+      revealWinner(winner);
+
+      // 🔊 SFX: red de seguridad por si el temporizador no limpió
+      try {
+        if (window.JJA_Sound && typeof window.JJA_Sound.stopRoulette === 'function') {
+          window.JJA_Sound.stopRoulette();
+        }
+      } catch (_) {}
+
+      isSpinning = false;
+
+      // --- BOTONES FINALES ---
+      if (btnSpin) {
+        btnSpin.classList.remove('is-spinning');
+        btnSpin.hidden = true;
+      }
+      if (btnApply) {
+        btnApply.hidden = false;
+        btnApply.disabled = false;
+      }
+    }
   
   function revealWinner(event) {
     if (!event) return;
