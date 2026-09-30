@@ -35,6 +35,7 @@
       <button type="button" class="btn btn--danger" id="btnClearAll">✕ Limpiar Todo</button>
       <button type="button" class="btn btn--ready" id="btnReadyDraw">⚔ Entrar a la Arena</button>
       <button type="button" class="btn btn--ghost" id="btnResetTournamentHeader" title="Reiniciar todos los estados del torneo">↻ Reiniciar Torneo</button>
+      <button id="btnAudioSettings" class="btn btn--secondary" type="button" title="Ajustes de Sonido">⚙ Ajustes</button>
       <input type="file" id="importFileInput" accept="application/json,.json" hidden>
     </nav>
   </header>
@@ -255,7 +256,9 @@
 
     <!-- Barra superior de batalla -->
     <div class="battle__topbar">
+      
       <button type="button" class="btn btn--ghost" id="btnExitBattle">← Salir de la Arena</button>
+      <button id="btnArenaAudioSettings" class="btn btn--secondary btn--sm" type="button" title="Ajustes de Sonido">⚙ Ajustes</button>
       <div class="battle__stage-name" id="battleStageName">—</div>
       <div class="battle__turn-indicator" id="battleTurnIndicator">Turno 1</div>
     </div>
@@ -1400,6 +1403,59 @@
       </div>
     </div>
   </div>
+    <!-- ===== MODAL: AJUSTES DE AUDIO ===== -->
+    <div class="modal-backdrop modal-backdrop--audio" id="audioSettingsModal" hidden>
+      <div class="audio-settings-modal" role="dialog" aria-modal="true" aria-labelledby="audioSettingsTitle">
+  
+        <header class="audio-settings-modal__header">
+          <h2 class="audio-settings-modal__title" id="audioSettingsTitle">⚙ Ajustes de Sonido</h2>
+          <button type="button" class="modal__close" id="btnCloseAudioSettings" aria-label="Cerrar">✕</button>
+        </header>
+  
+        <div class="audio-settings-modal__body">
+  
+          <!-- Slider BGM -->
+          <div class="audio-settings-row">
+            <div class="audio-settings-row__labels">
+              <span class="audio-settings-row__name">🎵 Música / Ambiente (BGM)</span>
+              <span class="audio-settings-row__value" id="bgmVolumeValue">25%</span>
+            </div>
+            <input type="range" class="audio-slider" id="sliderBgmVolume"
+                   min="0" max="100" step="1" value="25"
+                   aria-label="Volumen de música y ambiente">
+            <div class="audio-settings-row__hint">
+              Afecta a los ambientes del roster y a la playlist de combate.
+            </div>
+          </div>
+  
+          <!-- Slider SFX -->
+          <div class="audio-settings-row">
+            <div class="audio-settings-row__labels">
+              <span class="audio-settings-row__name">🔊 Efectos Especiales (SFX)</span>
+              <span class="audio-settings-row__value" id="sfxVolumeValue">70%</span>
+            </div>
+            <input type="range" class="audio-slider" id="sliderSfxVolume"
+                   min="0" max="100" step="1" value="70"
+                   aria-label="Volumen de efectos especiales">
+            <div class="audio-settings-row__hint">
+              Golpes, curación, escudo, reloj, ruleta y victoria.
+            </div>
+          </div>
+  
+          <!-- Presets rápidos -->
+          <div class="audio-settings-presets">
+            <button type="button" class="btn btn--ghost" data-audio-preset="stream">🎙 Modo Stream</button>
+            <button type="button" class="btn btn--ghost" data-audio-preset="cinema">🎬 Modo Cine</button>
+            <button type="button" class="btn btn--ghost" data-audio-preset="mute">🔇 Silenciar Todo</button>
+            <button type="button" class="btn btn--ghost" data-audio-preset="default">↻ Restaurar</button>
+          </div>
+        </div>
+  
+        <footer class="audio-settings-modal__footer">
+          <button type="button" class="btn btn--gold" id="btnSaveAudioSettings">✓ Guardar y Cerrar</button>
+        </footer>
+      </div>
+    </div>
 
   <!-- ===== TOAST / NOTIFICACIONES ===== -->
   <div class="toast-stack" id="toastStack" aria-live="polite"></div>

@@ -428,27 +428,157 @@
   
       return [];
     }
+      /* =========================================================
+     PROPAGACIÓN DE DERROTA DESDE UNA FORMA REQUIEM AL BASE
+     ------------------------------------------------------------
+     Si el Stand derrotado es una forma Requiem (isRequiem === true),
+     buscamos su Stand base vinculado (por requiemStandId inverso)
+     y lo marcamos también como RETIRED.
+     ========================================================= */
+  function propagateRequiemDefeat(defeatedId) {
+    if (!defeatedId) return false;
+
+    const defeated = roster.find((s) => s.id === defeatedId);
+    if (!defeated) return false;
+
+    // Solo propagamos si el derrotado ES una forma Requiem
+    if (!defeated.isRequiem) return false;
+
+    // Buscar el Stand base cuyo requiemStandId apunte al Requiem derrotado
+    const base = roster.find((s) => !s.isRequiem && s.requiemStandId === defeatedId);
+    if (!base) {
+      console.warn(`[Requiem] No se encontró Stand base vinculado al Requiem ${defeated.standName}`);
+      return false;
+    }
+
+    // --- Cascada de derrota sobre el base ---
+    base.tournamentState = STAND_STATE.RETIRED;
+    base.isDefeated = true;
+    base.isRetired = true;
+    base.defeatedAt = Date.now();
+    base.hp = 0;
+    base.lastHp = 0;
+    base.updatedAt = Date.now();
+
+    // Limpiar marcas previas de WINNER/WINNER-phase si las hubiera
+    if (base.tournamentState === STAND_STATE.WINNER) {
+      base.tournamentState = STAND_STATE.RETIRED;
+    }
+
+    // Log visual en consola para trazabilidad del stream
+    console.log(`[Requiem] ${defeated.standName} cayó → ${base.standName} queda RETIRED.`);
+
+    return true;
+  }
+    /* =========================================================
+     PROPAGACIÓN DE VICTORIA DESDE UNA FORMA REQUIEM AL BASE
+     ------------------------------------------------------------
+     - Si el ganador es una forma Requiem, el Stand base vinculado
+       hereda la victoria SIN perder progresión de ronda previa.
+     - Preserva el estado WINNER si ya lo tenía.
+     - Sincroniza HP, contadores de combates y daño acumulado.
+     - No reinicia el avance del torneo.
+     ========================================================= */
+     function propagateRequiemVictory(winnerId, winnerHp, winnerMaxHp) {
+      if (!winnerId) return false;
+  
+      const winner = roster.find((s) => s.id === winnerId);
+      if (!winner) return false;
+  
+      // Solo propagamos si el ganador ES una forma Requiem
+      if (!winner.isRequiem) return false;
+  
+      // Buscar el Stand base cuyo requiemStandId apunte al Requiem ganador
+      const base = roster.find((s) => !s.isRequiem && s.requiemStandId === winnerId);
+      if (!base) {
+        console.warn(`[Requiem] No se encontró Stand base vinculado al Requiem ${winner.standName}`);
+        return false;
+      }
+  
+      // --- Preservar progresión: si el base YA era WINNER, se mantiene ---
+      // Si estaba en WAITING (su primera pelea), sube a WINNER.
+      if (base.tournamentState !== STAND_STATE.WINNER) {
+        base.tournamentState = STAND_STATE.WINNER;
+      }
+  
+      // Limpiar cualquier marca de derrota previa
+      base.isDefeated = false;
+      base.isRetired = false;
+      base.defeatedAt = null;
+  
+      // --- Sincronizar HP y contadores de torneo ---
+      // El base hereda el HP con el que el Requiem sobrevivió
+      if (typeof winnerHp === 'number') {
+        base.lastHp = Math.max(0, Math.floor(winnerHp));
+        base.hp = base.lastHp;
+      }
+  
+      // Sumar combates y daño del Requiem al base (los acumuladores del torneo)
+      base.tournamentBattles = (base.tournamentBattles || 0) + 1;
+      base.tournamentDamage = (base.tournamentDamage || 0) + (winner.tournamentDamage || 0);
+  
+      base.updatedAt = Date.now();
+  
+      console.log(`[Requiem] ${winner.standName} ganó → ${base.standName} hereda progresión (estado ${base.tournamentState}).`);
+  
+      return true;
+    }
 
   /* =========================================================
      MÓDULO 4 — MARCAR K.O. (BATTLE ROYALE)
      ========================================================= */
      function markDefeated(loserId) {
       if (currentMode !== 'royale') return;
+  
       const idx = roster.findIndex((s) => s.id === loserId);
       if (idx < 0) return;
+  
+      // Marcar al derrotado directo
       roster[idx].tournamentState = STAND_STATE.RETIRED;
       roster[idx].isDefeated = true;
+      roster[idx].isRetired = true;
       roster[idx].defeatedAt = Date.now();
+      roster[idx].hp = 0;
+      roster[idx].lastHp = 0;
+  
+      // --- NUEVO: propagar derrota si es una forma Requiem ---
+      propagateRequiemDefeat(loserId);
+  
       saveRoster();
     }
   
-    function markWinner(winnerId) {
-      if (currentMode !== 'royale') return;
-      const idx = roster.findIndex((s) => s.id === winnerId);
-      if (idx < 0) return;
-      roster[idx].tournamentState = STAND_STATE.WINNER;
-      saveRoster();
+      /* =========================================================
+     MARCAR GANADOR (con cascada Requiem → Base)
+     ------------------------------------------------------------
+     winnerId: id del Stand ganador (puede ser Requiem o base)
+     winnerHp (opcional): HP con el que sobrevivió para sincronizar
+     winnerMaxHp (opcional): HP máximo del ganador
+     ========================================================= */
+  function markWinner(winnerId, winnerHp = null, winnerMaxHp = null) {
+    if (currentMode !== 'royale') return;
+
+    const idx = roster.findIndex((s) => s.id === winnerId);
+    if (idx < 0) return;
+
+    const winner = roster[idx];
+
+    // Marcar al ganador directo
+    winner.tournamentState = STAND_STATE.WINNER;
+    winner.isDefeated = false;
+    winner.isRetired = false;
+    winner.defeatedAt = null;
+
+    // Sincronizar HP del ganador directo
+    if (typeof winnerHp === 'number' && winnerHp >= 0) {
+      winner.lastHp = Math.floor(winnerHp);
+      winner.hp = winner.lastHp;
     }
+
+    // --- NUEVO: propagar si el ganador es una forma Requiem ---
+    propagateRequiemVictory(winnerId, winnerHp, winnerMaxHp);
+
+    saveRoster();
+  }
 
     function checkTournamentEnd() {
       if (currentMode !== 'royale') return false;
@@ -497,15 +627,19 @@
     }
 
     function resetTournament() {
-      roster = roster.map((s) => ({
-        ...s,
-        isDefeated: false,
-        defeatedAt: null,
-        tournamentState: STAND_STATE.WAITING,
-        lastHp: null,
-        tournamentDamage: 0,
-        tournamentBattles: 0
-      }));
+      roster = roster.map((s) => {
+        const { isDefeated, defeatedAt, ...rest } = s;
+        return {
+          ...rest,
+          isDefeated: false,
+          defeatedAt: null,
+          tournamentState: STAND_STATE.WAITING,
+          isChampion: false,
+          lastHp: null,
+          tournamentDamage: 0,
+          tournamentBattles: 0
+        };
+      });
       tournamentRound = 1;
       tournamentPhase = PHASE.WAITING;
       saveRoster();
@@ -581,6 +715,7 @@
       } else {
         championBackdrop.hidden = false;
       }
+      
       toast(`¡${contenders[0].standName} ES EL ÚLTIMO EN PIE!`, 'success');
       return;
     }
@@ -648,62 +783,70 @@
      - Restaura HP al máximo y limpia marcas de retirado/derrotado.
      - Persiste en localStorage. NO reinicia el torneo.
      ========================================================= */
-  function reviveStand(standIdOrName) {
-    if (!standIdOrName) {
-      toast('Indica un id, nombre de Stand o nombre de artista.', 'error');
-      return null;
+     function reviveStand(standIdOrName) {
+      if (!standIdOrName) {
+        toast('Indica un id, nombre de Stand o nombre de artista.', 'error');
+        return null;
+      }
+  
+      const needle = String(standIdOrName).trim();
+      const lc = needle.toLowerCase();
+  
+      let idx = roster.findIndex((s) => s.id === needle);
+      if (idx < 0) {
+        idx = roster.findIndex((s) =>
+          (s.standName || '').trim().toLowerCase() === lc ||
+          (s.artistName || '').trim().toLowerCase() === lc
+        );
+      }
+      if (idx < 0) {
+        idx = roster.findIndex((s) => (s.standName || '').toLowerCase().includes(lc));
+      }
+      if (idx < 0) {
+        toast(`No se encontró ningún Stand que coincida con "${needle}".`, 'error');
+        return null;
+      }
+  
+      const stand = roster[idx];
+  
+      // Restaurar el Stand revivido
+      stand.tournamentState = STAND_STATE.WINNER;
+      stand.isRetired = false;
+      stand.isDefeated = false;
+      stand.defeatedAt = null;
+  
+      const maxHp = computeHP(stand.stats.durability, stand.level || DEFAULT_LEVEL);
+      stand.lastHp = maxHp;
+      stand.hp = maxHp;
+      stand.updatedAt = Date.now();
+  
+      // --- Cascada inversa: si es un Requiem, revivir también su base ---
+      if (stand.isRequiem) {
+        const base = roster.find((s) => !s.isRequiem && s.requiemStandId === stand.id);
+        if (base) {
+          base.tournamentState = STAND_STATE.WINNER;
+          base.isRetired = false;
+          base.isDefeated = false;
+          base.defeatedAt = null;
+  
+          const baseMaxHp = computeHP(base.stats.durability, base.level || DEFAULT_LEVEL);
+          base.lastHp = baseMaxHp;
+          base.hp = baseMaxHp;
+          base.updatedAt = Date.now();
+  
+          console.log(`[Requiem] Base ${base.standName} revivida por cascada desde ${stand.standName}.`);
+        }
+      }
+  
+      if (typeof saveRoster === 'function') saveRoster();
+      if (typeof saveMode === 'function') saveMode();
+      if (typeof renderGallery === 'function') renderGallery();
+      if (typeof updateTournamentStatus === 'function') updateTournamentStatus();
+      if (typeof updateReadyButton === 'function') updateReadyButton();
+  
+      toast(`🏆 ${stand.standName} (${stand.artistName}) reincorporado como GANADOR.`, 'success');
+      return stand;
     }
-
-    const needle = String(standIdOrName).trim();
-    const lc = needle.toLowerCase();
-
-    // Buscar por id, nombre de Stand o nombre de artista
-    let idx = roster.findIndex((s) => s.id === needle);
-    if (idx < 0) {
-      idx = roster.findIndex((s) =>
-        (s.standName || '').trim().toLowerCase() === lc ||
-        (s.artistName || '').trim().toLowerCase() === lc
-      );
-    }
-    if (idx < 0) {
-      idx = roster.findIndex((s) =>
-        (s.standName || '').toLowerCase().includes(lc)
-      );
-    }
-
-    if (idx < 0) {
-      toast(`No se encontró ningún Stand que coincida con "${needle}".`, 'error');
-      return null;
-    }
-
-    const stand = roster[idx];
-
-    // --- Restauración directa a GANADOR ---
-    stand.tournamentState = STAND_STATE.WINNER;   // 'winner'
-    stand.isRetired = false;
-    stand.isDefeated = false;
-    stand.defeatedAt = null;
-
-    // HP al máximo
-    const maxHp = computeHP(stand.stats.durability, stand.level || DEFAULT_LEVEL);
-    stand.lastHp = maxHp;
-    stand.hp = maxHp;
-
-    stand.updatedAt = Date.now();
-
-    // --- Persistencia ---
-    if (typeof saveRoster === 'function') saveRoster();
-    if (typeof saveMode === 'function') saveMode();
-
-    // --- Refrescar UI ---
-    if (typeof renderGallery === 'function') renderGallery();
-    if (typeof updateTournamentStatus === 'function') updateTournamentStatus();
-    if (typeof updateReadyButton === 'function') updateReadyButton();
-
-    toast(`🏆 ${stand.standName} (${stand.artistName}) reincorporado como GANADOR.`, 'success');
-    console.log(`[ADMIN] ${stand.standName} — estado WINNER, HP ${maxHp}/${maxHp}`);
-    return stand;
-  }
     /* =========================================================
      ADMIN — PROMOVER STAND A WINNER (UN CLIC)
      ------------------------------------------------------------
@@ -1077,6 +1220,7 @@
       const cry = stand.battleCry
         ? `<p class="stand-card__cry">“${escapeHtml(stand.battleCry)}”</p>`
         : '';
+        
   
         card.innerHTML = `
         <div class="stand-card__frame">
@@ -2198,6 +2342,93 @@
         closeModal();
       });
     }
+      /* =========================================================
+     PANEL DE AJUSTES DE AUDIO
+     ========================================================= */
+     function initAudioSettingsPanel() {
+      const btnOpen       = document.getElementById('btnAudioSettings');
+      
+          // Botón de ajustes dentro de la arena de combate
+    const btnOpenArena = document.getElementById('btnArenaAudioSettings');
+    if (btnOpenArena) btnOpenArena.addEventListener('click', openModal);
+      const modal         = document.getElementById('audioSettingsModal');
+      const btnClose      = document.getElementById('btnCloseAudioSettings');
+      const btnSave       = document.getElementById('btnSaveAudioSettings');
+      const sliderBgm     = document.getElementById('sliderBgmVolume');
+      const sliderSfx     = document.getElementById('sliderSfxVolume');
+      const bgmValue      = document.getElementById('bgmVolumeValue');
+      const sfxValue      = document.getElementById('sfxVolumeValue');
+      const presetBtns    = document.querySelectorAll('[data-audio-preset]');
+  
+      if (!modal || !sliderBgm || !sliderSfx) return;
+  
+      // Sincronizar UI con los valores actuales
+      function syncUIFromSoundManager() {
+        const v = SoundManager.getVolumes();
+        sliderBgm.value = Math.round(v.bgm * 100);
+        sliderSfx.value = Math.round(v.sfx * 100);
+        bgmValue.textContent = `${Math.round(v.bgm * 100)}%`;
+        sfxValue.textContent = `${Math.round(v.sfx * 100)}%`;
+      }
+  
+      function openModal() {
+        syncUIFromSoundManager();
+        modal.hidden = false;
+        document.body.style.overflow = 'hidden';
+      }
+  
+      function closeModal() {
+        modal.hidden = true;
+        document.body.style.overflow = '';
+        try { SoundManager.saveSettings(); } catch (_) {}
+      }
+  
+      // --- Bind de los DOS botones de apertura ---
+      if (btnOpen)      btnOpen.addEventListener('click', openModal);
+      if (btnOpenArena) btnOpenArena.addEventListener('click', openModal); // ← NUEVO
+  
+      if (btnClose) btnClose.addEventListener('click', closeModal);
+      if (btnSave)  btnSave.addEventListener('click', closeModal);
+  
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+      });
+  
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !modal.hidden) closeModal();
+      });
+  
+      sliderBgm.addEventListener('input', () => {
+        const pct = Number(sliderBgm.value) || 0;
+        bgmValue.textContent = `${pct}%`;
+        SoundManager.setBGMVolume(pct / 100);
+      });
+  
+      sliderSfx.addEventListener('input', () => {
+        const pct = Number(sliderSfx.value) || 0;
+        sfxValue.textContent = `${pct}%`;
+        SoundManager.setSFXVolume(pct / 100);
+      });
+  
+      const PRESETS = {
+        stream:  { bgm: 0.20, sfx: 0.80 },
+        cinema:  { bgm: 0.45, sfx: 0.55 },
+        mute:    { bgm: 0.00, sfx: 0.00 },
+        default: { bgm: 0.25, sfx: 0.70 }
+      };
+  
+      presetBtns.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const key = btn.dataset.audioPreset;
+          const preset = PRESETS[key];
+          if (!preset) return;
+          SoundManager.setBGMVolume(preset.bgm);
+          SoundManager.setSFXVolume(preset.sfx);
+          syncUIFromSoundManager();
+          toast(`Preset aplicado: ${btn.textContent.trim()}`, 'success');
+        });
+      });
+    }
     
       /* =========================================================
      MÓDULO 2 — PERSISTENCIA DE ESCENARIOS
@@ -2731,7 +2962,10 @@
     reelP2.classList.add('is-spinning');
     reelStage.classList.add('is-spinning');
 
-    const spinDuration = 2200;
+    const spinDuration = 3000;
+    if (window.JJA_Sound && typeof window.JJA_Sound.startRoulette === 'function') {
+      window.JJA_Sound.startRoulette(spinDuration);
+    }
     const spinInterval = 90;
     const spinner = setInterval(() => {
       // --- SFX tick de ruleta ---
@@ -2841,6 +3075,8 @@
     }, p2, stage);
 
     versusScreen.hidden = false;
+    
+
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -2865,6 +3101,8 @@
      MÓDULO 2 — INICIAR COMBATE (puente al Módulo 3)
      ========================================================= */
      function startFight() {
+      // Detener el reloj de draft
+    
       if (!currentMatchup || !currentMatchup.p1 || !currentMatchup.p2) {
         toast('No hay enfrentamiento activo.', 'error');
         return;
@@ -3368,6 +3606,7 @@
   }
 
   function startBattleEngine() {
+        
     if (!currentMatchup || !currentMatchup.p1 || !currentMatchup.p2) {
       toast('No hay enfrentamiento activo.', 'error');
       return;
@@ -3404,12 +3643,15 @@
     });
     saveRoster();
 
-    // Transición de vistas
-    versusScreen.hidden = true;
-    tournamentView.hidden = true;
-    battleView.hidden = false;
-    document.body.classList.add('is-battling');
-    window.scrollTo(0, 0);
+        // Transición de vistas
+        versusScreen.hidden = true;
+        tournamentView.hidden = true;
+        battleView.hidden = false;
+        document.body.classList.add('is-battling');
+        window.scrollTo(0, 0);
+    
+        // --- BGM de batalla ---
+        SoundManager.playBattleBGM();
 
     // Fondo del escenario
     if (stage && stage.image) {
@@ -3993,47 +4235,57 @@
         setTimeout(() => attackerEl.classList.remove('is-attacking'), 500);
     
         setTimeout(() => {
-                // Aplicar daño — con posible reducción por escudo
-            // --- INTERCEPCIÓN DE ESQUIVE TOTAL ---
-            const defenderEl = defenderSide === 'p1' ? fighterP1 : fighterP2;
-
-            if (defender.isDodging) {
-              defender.isDodging = false;
-      
-              if (defenderEl) {
-                defenderEl.classList.add('is-dodging');
-                setTimeout(() => defenderEl.classList.remove('is-dodging'), 800);
-              }
-      
-              pushLog({
-                side: defenderSide,
-                type: 'tactical-dodge-success',
-                html: `💨 <strong>${escapeHtml(defender.data.standName)}</strong> esquivó por completo el ataque de ` +
-                      `<strong>${escapeHtml(attacker.data.standName)}</strong> gracias a sus reflejos.`
-              });
-      
-              // Terminar turno sin daño
-              battle.busy = false;
-              passTurn();
-              return;
+          // --- SFX: golpe normal o crítico ---
+          // Se reproduce justo al aplicar el daño, sincronizado con la animación.
+          try {
+            if (result.crit) {
+              SoundManager.playCritical();
+            } else {
+              SoundManager.playHit();
             }
-      
-            // Aplicar daño — con posible reducción por escudo
-            let finalDamage = result.damage;
+          } catch (_) { /* silencioso */ }
 
-      if (defender.shield) {
-        finalDamage = Math.round(finalDamage * 0.5);
-        defender.shield = false; // se consume al primer golpe
-        defenderEl.classList.remove('has-shield');
-        pushLog({
-          side: defenderSide,
-          type: 'shield',
-          html: `<span style="color:var(--accent-cyan);font-weight:700;">🛡 Guardia de ${escapeHtml(defender.data.standName)}</span> absorbe la mitad del impacto.`
-        });
-      }
+          // Aplicar daño — con posible reducción por escudo
+          // --- INTERCEPCIÓN DE ESQUIVE TOTAL ---
+          const defenderEl = defenderSide === 'p1' ? fighterP1 : fighterP2;
 
-      defender.hp = Math.max(0, defender.hp - finalDamage);
-      attacker.totalDamage += finalDamage;
+          if (defender.isDodging) {
+            defender.isDodging = false;
+
+            if (defenderEl) {
+              defenderEl.classList.add('is-dodging');
+              setTimeout(() => defenderEl.classList.remove('is-dodging'), 800);
+            }
+
+            pushLog({
+              side: defenderSide,
+              type: 'tactical-dodge-success',
+              html: `💨 <strong>${escapeHtml(defender.data.standName)}</strong> esquivó por completo el ataque de ` +
+                    `<strong>${escapeHtml(attacker.data.standName)}</strong> gracias a sus reflejos.`
+            });
+
+            // Terminar turno sin daño
+            battle.busy = false;
+            passTurn();
+            return;
+          }
+
+          // Aplicar daño — con posible reducción por escudo
+          let finalDamage = result.damage;
+
+          if (defender.shield) {
+            finalDamage = Math.round(finalDamage * 0.5);
+            defender.shield = false; // se consume al primer golpe
+            defenderEl.classList.remove('has-shield');
+            pushLog({
+              side: defenderSide,
+              type: 'shield',
+              html: `<span style="color:var(--accent-cyan);font-weight:700;">🛡 Guardia de ${escapeHtml(defender.data.standName)}</span> absorbe la mitad del impacto.`
+            });
+          }
+
+          defender.hp = Math.max(0, defender.hp - finalDamage);
+          attacker.totalDamage += finalDamage;
 
           // Persistir daño del torneo en el roster
           const attackerIdx = roster.findIndex((s) => s.id === attacker.data.id);
@@ -4041,7 +4293,7 @@
             roster[attackerIdx].tournamentDamage =
               (roster[attackerIdx].tournamentDamage || 0) + result.damage;
           }
-    
+
           // Visual de impacto
           defenderEl.classList.add('is-hit');
           if (result.crit) defenderEl.classList.add('is-crit');
@@ -4049,28 +4301,28 @@
             defenderEl.classList.remove('is-hit');
             defenderEl.classList.remove('is-crit');
           }, 650);
-    
+
           // Número flotante de daño
-            showDamageFloat(defenderEl, finalDamage, result.crit);
-    
+          showDamageFloat(defenderEl, finalDamage, result.crit);
+
           // Actualizar UI
           updateHpBar(defenderSide);
-    
+
           // Log
           const cryText = attacker.data.battleCry
             ? `<span class="log-entry__cry">“${escapeHtml(attacker.data.battleCry)}”</span>`
             : '';
-            const bonusPct = result.terrainMult
+          const bonusPct = result.terrainMult
             ? Math.round((result.terrainMult - 1) * 100)
             : 0;
-    
+
           // Etiqueta de afinidades involucradas
           let affinityDetail = '';
           if (battle.stage && Math.abs(bonusPct) > 0) {
             let stage = battle.stage;
             const normalizeFn = window.JJA_EventsData && window.JJA_EventsData.normalizeArena;
             if (typeof normalizeFn === 'function') stage = normalizeFn(stage) || stage;
-    
+
             const affinity = String(attacker.data.affinity || '').trim();
             const matchedFav = (stage.favorableAffinities || []).find(
               (f) => String(f.affinity).trim() === affinity
@@ -4078,13 +4330,13 @@
             const matchedUnfav = (stage.unfavorableAffinities || []).find(
               (f) => String(f.affinity).trim() === affinity
             );
-    
+
             const names = [];
             if (matchedFav) names.push(matchedFav.affinity);
             if (matchedUnfav) names.push(matchedUnfav.affinity);
             if (names.length) affinityDetail = ` · ${names.join(' / ')}`;
           }
-    
+
           let bonusTag = '';
           if (bonusPct > 0) {
             bonusTag = ` <span style="color:var(--ready-hi);font-weight:700;">[+${bonusPct}% Terreno${affinityDetail}]</span>`;
@@ -4094,39 +4346,40 @@
           const critTag = result.crit
             ? ' <span style="color:var(--danger-hi);font-weight:700;">¡CRÍTICO!</span>'
             : '';
-    
-            pushLog({
-              side: attackerSide,
-              type: result.crit ? 'crit' : (result.bonusApplied ? 'bonus' : ''),
-              html: `<strong>${escapeHtml(attacker.data.standName)}</strong> usa <em>${escapeHtml(actionName)}</em> ` +
-                    `causando <span class="log-entry__dmg${result.crit ? ' log-entry__dmg--crit' : ''}">${finalDamage}</span> de daño.` +
-                    bonusTag + critTag + cryText
-            });
-    
+
+          pushLog({
+            side: attackerSide,
+            type: result.crit ? 'crit' : (result.bonusApplied ? 'bonus' : ''),
+            html: `<strong>${escapeHtml(attacker.data.standName)}</strong> usa <em>${escapeHtml(actionName)}</em> ` +
+                  `causando <span class="log-entry__dmg${result.crit ? ' log-entry__dmg--crit' : ''}">${finalDamage}</span> de daño.` +
+                  bonusTag + critTag + cryText
+          });
+
           // ¿K.O.?
           if (defender.hp <= 0) {
             battle.finished = true;
             const winnerSide = attackerSide;
             const winner = battle[winnerSide];
-    
+
             pushLog({
               side: winnerSide,
               type: 'ko',
               html: `¡K.O.! <strong>${escapeHtml(winner.data.standName)}</strong> se alza con la victoria.`
             });
-    
+
             renderBattleUI();
             updateActionPanel();
             setTimeout(() => showVictoryModal(winnerSide), 900);
             battle.busy = false;
             return;
           }
-    
+
           // Pasar turno
           passTurn();
-    
+
           battle.busy = false;
         }, 320);
+      
       }
     
       function showDamageFloat(wrapEl, value, crit) {
@@ -4586,7 +4839,7 @@
         const healed = attacker.hp - before;
 
         attackerEl.classList.add('is-healing');
-        SoundManager.playHeal(); // --- SFX curación ---
+        SoundManager.playHeal();
         setTimeout(() => attackerEl.classList.remove('is-healing'), 1000);
 
         if (healed > 0) {
@@ -4621,7 +4874,7 @@
         const healed = attacker.hp - before;
 
         attackerEl.classList.add('is-healing');
-        SoundManager.playHeal(); // --- SFX purificación (reutiliza curación) ---
+        SoundManager.playHeal();
         setTimeout(() => attackerEl.classList.remove('is-healing'), 1000);
 
         if (healed > 0) {
@@ -4687,6 +4940,7 @@
         attacker.reflectActive = true;
 
         attackerEl.classList.add('is-shielding', 'has-shield');
+        SoundManager.playShield();
         setTimeout(() => attackerEl.classList.remove('is-shielding'), 1000);
 
         pushLog({
@@ -4799,7 +5053,7 @@
       const impact = () => {
         // --- SFX ---
         if (crit) {
-          SoundManager.playCrit();
+          SoundManager.playCritical();
         } else {
           SoundManager.playHit();
         }
@@ -4942,66 +5196,88 @@
      - Registra en el log
      - Se usa UNA sola vez por combate por bando
      ========================================================= */
-  function triggerRequiem(side) {
-    if (!battle || battle.finished || battle.busy) return;
-
-    const fighter = battle[side];
-    if (!fighter) return;
-    if (fighter.__requiemTriggered) return;
-    if (!fighter.data.requiemStandId) return;
-
-    const requiemData = roster.find((s) => s.id === fighter.data.requiemStandId && s.isRequiem);
-    if (!requiemData) {
-      toast('La Forma Requiem vinculada no existe o fue eliminada.', 'error');
-      return;
+     function triggerRequiem(side) {
+      if (!battle || battle.finished || battle.busy) return;
+  
+      const fighter = battle[side];
+      if (!fighter) return;
+      if (fighter.__requiemTriggered) return;
+      if (!fighter.data.requiemStandId) return;
+  
+      const requiemData = roster.find((s) => s.id === fighter.data.requiemStandId && s.isRequiem);
+      if (!requiemData) {
+        toast('La Forma Requiem vinculada no existe o fue eliminada.', 'error');
+        return;
+      }
+  
+      battle.busy = true;
+  
+      const oldName = fighter.data.standName;
+  
+      // --- Efecto audiovisual dramático ---
+      try { SoundManager.playRequiem(); } catch (_) {}
+  
+      // Activar el efecto global (CSS animations)
+      document.body.classList.add('requiem-active');
+      const battleViewEl = document.getElementById('battleView');
+      if (battleViewEl) battleViewEl.classList.add('requiem-active');
+  
+      // Bloquear temporalmente la UI (el CSS ya lo maneja, pero aseguramos)
+      const actionsPanel = document.querySelector('.battle-actions');
+      if (actionsPanel) actionsPanel.style.pointerEvents = 'none';
+  
+      // Duración del efecto (alineada con la animación CSS)
+      const EFFECT_DURATION = 1800;
+  
+      setTimeout(() => {
+        document.body.classList.remove('requiem-active');
+        if (battleViewEl) battleViewEl.classList.remove('requiem-active');
+        if (actionsPanel) actionsPanel.style.pointerEvents = '';
+      }, EFFECT_DURATION);
+  
+      // --- Reemplazar datos del fighter ---
+      fighter.data = {
+        ...requiemData,
+        __requiemOf: fighter.data.id
+      };
+  
+      // HP al del Requiem
+      const newMaxHp = computeHP(requiemData.stats.durability, requiemData.level || DEFAULT_LEVEL);
+      fighter.maxHp = newMaxHp;
+      fighter.hp = newMaxHp;
+  
+      // Reset cooldowns
+      fighter.cooldowns = [0, 0, 0, 0, 0];
+  
+      // Flags
+      fighter.__requiemTriggered = true;
+      fighter.__isRequiemForm = true;
+  
+      // Efecto secundario sobre el propio sprite (mantiene el shake morado)
+      const fighterEl = side === 'p1' ? fighterP1 : fighterP2;
+      if (fighterEl) {
+        fighterEl.classList.add('is-requiem-awakening');
+        setTimeout(() => fighterEl.classList.remove('is-requiem-awakening'), 1700);
+      }
+  
+      // --- Log ---
+      pushLog({
+        side,
+        type: 'requiem',
+        html: `✧ <strong>${escapeHtml(oldName)}</strong> ha sido atravesado por la Flecha. ` +
+              `¡Despierta <strong>${escapeHtml(requiemData.standName)}</strong>!`
+      });
+  
+      // --- Refrescar UI ---
+      renderBattleUI();
+      updateHpBar(side);
+      updateActionPanel();
+  
+      // Devolver el control tras el beat dramático
+      setTimeout(() => {
+        battle.busy = false;
+      }, EFFECT_DURATION + 200);
     }
-
-    battle.busy = true;
-
-    const oldName = fighter.data.standName;
-
-    // --- Reemplazar datos ---
-    fighter.data = {
-      ...requiemData,
-      // Conservamos afinidad, etc. tal cual del Requiem
-      __requiemOf: fighter.data.id
-    };
-
-    // HP: recalcular desde el Requiem
-    const newMaxHp = computeHP(requiemData.stats.durability, requiemData.level || DEFAULT_LEVEL);
-    fighter.maxHp = newMaxHp;
-    fighter.hp = newMaxHp;
-
-    // Reset cooldowns para que pueda usar sus habilidades Requiem
-    fighter.cooldowns = [0, 0, 0, 0, 0];
-
-    // Marcar para no volver a usarlo
-    fighter.__requiemTriggered = true;
-    fighter.__isRequiemForm = true;
-
-    // --- Efecto visual ---
-    const fighterEl = side === 'p1' ? fighterP1 : fighterP2;
-    fighterEl.classList.add('is-requiem-awakening');
-    setTimeout(() => fighterEl.classList.remove('is-requiem-awakening'), 1700);
-
-    // --- Log ---
-    pushLog({
-      side,
-      type: 'requiem',
-      html: `✧ <strong>${escapeHtml(oldName)}</strong> ha sido atravesado por la Flecha. ` +
-            `¡Despierta <strong>${escapeHtml(requiemData.standName)}</strong>!`
-    });
-
-    // --- Refrescar UI ---
-    renderBattleUI();
-    updateHpBar(side);
-    updateActionPanel();
-
-    // Pequeño beat dramático antes de devolver el control
-    setTimeout(() => {
-      battle.busy = false;
-    }, 900);
-  }
     
   function disableAllActions() {
     const allBtns = [btnBasicAttack, skillBtn0, skillBtn1, skillBtn2, skillBtn3, skillBtn4];
@@ -5043,7 +5319,7 @@
       
           // Marcar perdedor y ganador (solo Battle Royale)
           markDefeated(loser.data.id);
-          markWinner(winner.data.id);
+          markWinner(winner.data.id, winner.hp, winner.maxHp);
       
           // Persistir HP del ganador
           const winnerIdx = roster.findIndex((s) => s.id === winner.data.id);
@@ -5174,6 +5450,8 @@
 
     // --- Abrir modal ---
     championBackdrop.hidden = false;
+        // --- SFX victoria final ---
+        SoundManager.playVictory();
     document.body.style.overflow = 'hidden';
   }
     
@@ -5181,6 +5459,8 @@
          MÓDULO 3 — SALIDA / REVANCHA
          ========================================================= */
          function exitBattleToTournament() {
+            // Volver a la BGM del roster
+           SoundManager.playRosterBGM();
           hideSkillTooltip();
           if (window.JJA_EventsRoulette) {
             window.JJA_EventsRoulette.closeModal();
@@ -5207,6 +5487,8 @@
           }
     
           function rematchFlow() {
+                // Volver a la BGM del roster
+            SoundManager.playRosterBGM();
             hideSkillTooltip();
             closeVictoryModal();
             battleView.hidden = true;
@@ -5231,6 +5513,8 @@
           }
     
           function exitBattleToRoster() {
+                // Volver a la BGM del roster
+            SoundManager.playRosterBGM();
             hideSkillTooltip();
             if (window.JJA_EventsRoulette) {
               window.JJA_EventsRoulette.closeModal();
@@ -5287,249 +5571,388 @@
     potential: 'POT'
   };
   const RADAR_MAX = 5;
-    /* =========================================================
-     SOUND MANAGER — SFX sintetizados (Web Audio API)
-     Sin dependencias externas. Volumen balanceado. Silencioso
-     si el navegador bloquea el audio (catch silencioso).
+        /* =========================================================
+     SOUND MANAGER — Archivos locales ./sounds/
+     ------------------------------------------------------------
+     - SFX, Clock (widget destino) y BGM con playlist rotativa.
+     - API global expuesta en window.JJA_Sound.
      ========================================================= */
      const SoundManager = (function () {
-      let ctx = null;
-      let masterGain = null;
       let enabled = true;
   
-      // Volumen global maestro (0..1)
-      const MASTER_VOLUME = 0.35;
+      // ---- Persistencia ----
+      const SETTINGS_KEY = 'jja_audio_settings';
+      const DEFAULTS = { sfx: 0.70, bgm: 0.25 };
   
-      function init() {
-        if (ctx) return ctx;
-        try {
-          const AC = window.AudioContext || window.webkitAudioContext;
-          if (!AC) { enabled = false; return null; }
-          ctx = new AC();
-          masterGain = ctx.createGain();
-          masterGain.gain.value = MASTER_VOLUME;
-          masterGain.connect(ctx.destination);
-        } catch (err) {
-          enabled = false;
-          ctx = null;
-        }
-        return ctx;
-      }
+      let sfxVolume = DEFAULTS.sfx;
+      let bgmVolume = DEFAULTS.bgm;
   
-      // Reanudar el contexto si el navegador lo suspendió (política de autoplay)
-      function resume() {
+      const SOUND_BASE = './sounds/';
+  
+      const sfxCache = new Map();
+  
+      let bgmCurrent = null;
+      let bgmPlaylist = [];
+      let bgmIndex = -1;
+      let bgmMode = 'sequential';
+  
+      let clockAudio = null;
+  
+      let rouletteAudio = null;
+      let rouletteTimer = null;
+  
+      const ROSTER_PLAYLIST = [
+        'SonidoAmbiente1.mp3',
+        'SonidoAmbiente2.mp3',
+        'Battle_Theme_2.mp3'
+      ];
+  
+      const BATTLE_PLAYLIST = [
+        
+        'BattleMusic.mp3',
+        'BattleMusic2.mp3',
+        'BattleMusic3.mp3',
+        'BattleMusic4.mp3',
+        'BattleMusic5.mp3',
+        'BattleMusic6.mp3'
+      ];
+  
+      // =========================================================
+      // CARGA / GUARDADO DE PREFERENCIAS
+      // =========================================================
+      function loadSettings() {
         try {
-          if (ctx && ctx.state === 'suspended') {
-            ctx.resume().catch(() => {});
+          const raw = localStorage.getItem(SETTINGS_KEY);
+          if (!raw) return;
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') {
+            if (typeof parsed.sfx === 'number') sfxVolume = Math.max(0, Math.min(1, parsed.sfx));
+            if (typeof parsed.bgm === 'number') bgmVolume = Math.max(0, Math.min(1, parsed.bgm));
           }
-        } catch (_) { /* silencioso */ }
-      }
-  
-      // Envolvente común: sube rápido y baja suave
-      function envelope(gainNode, attack, decay, peak) {
-        const now = ctx.currentTime;
-        gainNode.gain.cancelScheduledValues(now);
-        gainNode.gain.setValueAtTime(0.0001, now);
-        gainNode.gain.exponentialRampToValueAtTime(peak, now + attack);
-        gainNode.gain.exponentialRampToValueAtTime(0.0001, now + attack + decay);
-      }
-  
-      // Generador de ruido blanco corto (para impactos)
-      function makeNoiseBuffer(durationSec) {
-        const length = Math.floor(ctx.sampleRate * durationSec);
-        const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
-        const data = buffer.getChannelData(0);
-        for (let i = 0; i < length; i++) {
-          data[i] = (Math.random() * 2 - 1) * (1 - i / length);
+        } catch (err) {
+          console.warn('[SoundManager] No se pudieron cargar las preferencias:', err);
         }
-        return buffer;
       }
   
-      /* -------- SFX: GOLPE NORMAL -------- */
-      function playHit() {
-        if (!enabled) return;
+      function saveSettings() {
         try {
-          if (!init()) return;
-          resume();
-          const now = ctx.currentTime;
-  
-          // Capa 1: thump grave (seno descendente)
-          const osc = ctx.createOscillator();
-          const gOsc = ctx.createGain();
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(180, now);
-          osc.frequency.exponentialRampToValueAtTime(60, now + 0.18);
-          envelope(gOsc, 0.005, 0.18, 0.9);
-          osc.connect(gOsc).connect(masterGain);
-          osc.start(now);
-          osc.stop(now + 0.22);
-  
-          // Capa 2: ruido blanco filtrado (click de impacto)
-          const noise = ctx.createBufferSource();
-          noise.buffer = makeNoiseBuffer(0.12);
-          const bp = ctx.createBiquadFilter();
-          bp.type = 'bandpass';
-          bp.frequency.value = 1200;
-          bp.Q.value = 1.2;
-          const gNoise = ctx.createGain();
-          envelope(gNoise, 0.002, 0.10, 0.35);
-          noise.connect(bp).connect(gNoise).connect(masterGain);
-          noise.start(now);
-          noise.stop(now + 0.14);
-        } catch (_) { /* silencioso */ }
+          localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+            sfx: sfxVolume,
+            bgm: bgmVolume
+          }));
+        } catch (err) {
+          console.warn('[SoundManager] No se pudieron guardar las preferencias:', err);
+        }
       }
   
-      /* -------- SFX: CRÍTICO -------- */
-      function playCrit() {
-        if (!enabled) return;
+      // =========================================================
+      // HELPERS
+      // =========================================================
+      function createAudio(src, loop = false, volume = sfxVolume) {
         try {
-          if (!init()) return;
-          resume();
-          const now = ctx.currentTime;
-  
-          // Base de golpe más potente
-          const osc = ctx.createOscillator();
-          const gOsc = ctx.createGain();
-          osc.type = 'square';
-          osc.frequency.setValueAtTime(260, now);
-          osc.frequency.exponentialRampToValueAtTime(55, now + 0.28);
-          envelope(gOsc, 0.003, 0.30, 1.0);
-          osc.connect(gOsc).connect(masterGain);
-          osc.start(now);
-          osc.stop(now + 0.34);
-  
-          // Ruido agudo (shing)
-          const noise = ctx.createBufferSource();
-          noise.buffer = makeNoiseBuffer(0.2);
-          const hp = ctx.createBiquadFilter();
-          hp.type = 'highpass';
-          hp.frequency.value = 2200;
-          const gNoise = ctx.createGain();
-          envelope(gNoise, 0.002, 0.16, 0.55);
-          noise.connect(hp).connect(gNoise).connect(masterGain);
-          noise.start(now);
-          noise.stop(now + 0.24);
-  
-          // Barrido ascendente "flash" (para sensación de potencia)
-          const flash = ctx.createOscillator();
-          const gFlash = ctx.createGain();
-          flash.type = 'triangle';
-          flash.frequency.setValueAtTime(600, now);
-          flash.frequency.exponentialRampToValueAtTime(1800, now + 0.15);
-          envelope(gFlash, 0.005, 0.15, 0.28);
-          flash.connect(gFlash).connect(masterGain);
-          flash.start(now);
-          flash.stop(now + 0.22);
-        } catch (_) { /* silencioso */ }
+          const a = new Audio(SOUND_BASE + src);
+          a.loop = loop;
+          a.volume = volume;
+          a.preload = 'auto';
+          a.crossOrigin = 'anonymous';
+          return a;
+        } catch (err) {
+          console.warn('[SoundManager] No se pudo crear audio para', src, err);
+          return null;
+        }
       }
   
-      /* -------- SFX: CURACIÓN / SOPORTE -------- */
-      function playHeal() {
-        if (!enabled) return;
+      function safePlay(audio) {
+        if (!enabled || !audio) return;
         try {
-          if (!init()) return;
-          resume();
-          const now = ctx.currentTime;
+          if (!audio.loop) audio.currentTime = 0;
+          const p = audio.play();
+          if (p && typeof p.catch === 'function') p.catch(() => {});
+        } catch (_) {}
+      }
   
-          // Dos notas ascendentes suaves (Do → Sol)
-          [523.25, 783.99].forEach((freq, i) => {
-            const t = now + i * 0.08;
-            const osc = ctx.createOscillator();
-            const g = ctx.createGain();
-            osc.type = 'triangle';
-            osc.frequency.value = freq;
-            g.gain.setValueAtTime(0.0001, t);
-            g.gain.exponentialRampToValueAtTime(0.35, t + 0.02);
-            g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
-            osc.connect(g).connect(masterGain);
-            osc.start(t);
-            osc.stop(t + 0.4);
+      function playRandom(poolName) {
+        const pool = sfxCache.get(poolName);
+        if (!pool || pool.length === 0) return;
+        const pick = pool[Math.floor(Math.random() * pool.length)];
+        safePlay(pick);
+      }
+  
+      // =========================================================
+      // PRECARGA
+      // =========================================================
+      function preload() {
+        sfxCache.set('hit', [
+          createAudio('EfectoPegar.mp3'),
+          createAudio('EfectoPegar2.wav'),
+          createAudio('EfectPunch3.mp3'),
+          createAudio('EfectPunch4.mp3')
+        ].filter(Boolean));
+  
+        sfxCache.set('crit', [createAudio('EfectPunchHevi_Impact.mp3')].filter(Boolean));
+  
+        sfxCache.set('heal', [
+          createAudio('EfectCuracion.mp3'),
+          createAudio('EfectCura2.wav')
+        ].filter(Boolean));
+  
+        sfxCache.set('shield', [createAudio('EfectEscudo.mp3')].filter(Boolean));
+  
+        sfxCache.set('rouletteSpin', [createAudio('EfectRuleteGirando.mp3')].filter(Boolean));
+        sfxCache.set('rouletteStop', [createAudio('EfectRuletaSelec2.mp3')].filter(Boolean));
+  
+        sfxCache.set('clock', [createAudio('EfectReloj.mp3', true, sfxVolume)].filter(Boolean));
+  
+        sfxCache.set('victory', [createAudio('EfectVictoria.mp3')].filter(Boolean));
+  
+        sfxCache.set('requiem', [createAudio('RequiemSonido.mp3')].filter(Boolean));
+  
+        // Aplicar volumen SFX actual a todos
+        applyVolumeToSfxCache();
+      }
+  
+      function applyVolumeToSfxCache() {
+        sfxCache.forEach((pool) => {
+          pool.forEach((a) => {
+            try { a.volume = sfxVolume; } catch (_) {}
           });
-        } catch (_) { /* silencioso */ }
+        });
       }
   
-      /* -------- SFX: TICK DE RULETA -------- */
-      function playTick() {
-        if (!enabled) return;
-        try {
-          if (!init()) return;
-          resume();
-          const now = ctx.currentTime;
+      // =========================================================
+      // SFX
+      // =========================================================
+      function playHit()      { playRandom('hit'); }
+      function playCritical() { playRandom('crit'); }
+      function playHeal()     { playRandom('heal'); }
+      function playShield()   { playRandom('shield'); }
+      function playVictory()  { playRandom('victory'); }
+      function playRequiem()  { playRandom('requiem'); }
   
-          const osc = ctx.createOscillator();
-          const g = ctx.createGain();
-          osc.type = 'square';
-          osc.frequency.setValueAtTime(1400, now);
-          osc.frequency.exponentialRampToValueAtTime(900, now + 0.03);
-          envelope(g, 0.001, 0.03, 0.18);
-          osc.connect(g).connect(masterGain);
-          osc.start(now);
-          osc.stop(now + 0.04);
-        } catch (_) { /* silencioso */ }
+      // =========================================================
+      // CLOCK
+      // =========================================================
+      function startClock() {
+        const pool = sfxCache.get('clock');
+        if (!pool || !pool.length) return;
+        clockAudio = pool[0];
+        try {
+          clockAudio.loop = true;
+          clockAudio.volume = sfxVolume;
+          if (clockAudio.paused) {
+            clockAudio.currentTime = 0;
+            const p = clockAudio.play();
+            if (p && typeof p.catch === 'function') p.catch(() => {});
+          }
+        } catch (_) {}
       }
   
-      /* -------- SFX: DETENCIÓN DE RULETA / VICTORIA -------- */
-      function playReveal() {
-        if (!enabled) return;
+      function stopClock() {
         try {
-          if (!init()) return;
-          resume();
-          const now = ctx.currentTime;
-  
-          // Acorde ascendente (Do - Mi - Sol)
-          [523.25, 659.25, 783.99].forEach((freq, i) => {
-            const t = now + i * 0.06;
-            const osc = ctx.createOscillator();
-            const g = ctx.createGain();
-            osc.type = 'triangle';
-            osc.frequency.value = freq;
-            g.gain.setValueAtTime(0.0001, t);
-            g.gain.exponentialRampToValueAtTime(0.4, t + 0.02);
-            g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
-            osc.connect(g).connect(masterGain);
-            osc.start(t);
-            osc.stop(t + 0.55);
-          });
-        } catch (_) { /* silencioso */ }
+          if (clockAudio) {
+            clockAudio.pause();
+            clockAudio.currentTime = 0;
+          }
+        } catch (_) {}
+        clockAudio = null;
       }
   
-      /* -------- CONTROLES PÚBLICOS -------- */
-      function setVolume(v) {
+      // =========================================================
+      // RULETA
+      // =========================================================
+      function startRoulette(durationMs = 6000) {
+        stopRoulette();
+        const spinPool = sfxCache.get('rouletteSpin');
+        if (!spinPool || !spinPool.length) return;
+        rouletteAudio = spinPool[0];
+        safePlay(rouletteAudio);
+  
+        rouletteTimer = setTimeout(() => {
+          try {
+            if (rouletteAudio) {
+              rouletteAudio.pause();
+              rouletteAudio.currentTime = 0;
+            }
+          } catch (_) {}
+  
+          const stopPool = sfxCache.get('rouletteStop');
+          if (stopPool && stopPool.length) {
+            const stopAudio = stopPool[0];
+            try {
+              stopAudio.currentTime = 0;
+              const p = stopAudio.play();
+              if (p && typeof p.catch === 'function') p.catch(() => {});
+            } catch (_) {}
+          }
+  
+          rouletteTimer = null;
+          rouletteAudio = null;
+        }, Math.max(0, durationMs));
+      }
+  
+      function stopRoulette() {
+        if (rouletteTimer) {
+          clearTimeout(rouletteTimer);
+          rouletteTimer = null;
+        }
         try {
-          if (!init()) return;
-          const clamped = Math.max(0, Math.min(1, Number(v) || 0));
-          masterGain.gain.value = clamped;
-        } catch (_) { /* silencioso */ }
+          if (rouletteAudio) {
+            rouletteAudio.pause();
+            rouletteAudio.currentTime = 0;
+          }
+        } catch (_) {}
+        rouletteAudio = null;
+      }
+  
+      // =========================================================
+      // BGM
+      // =========================================================
+      function pickNextIndex() {
+        if (bgmPlaylist.length === 0) return -1;
+        if (bgmMode === 'shuffle') {
+          if (bgmPlaylist.length === 1) return 0;
+          let next = bgmIndex;
+          while (next === bgmIndex) next = Math.floor(Math.random() * bgmPlaylist.length);
+          return next;
+        }
+        return (bgmIndex + 1) % bgmPlaylist.length;
+      }
+  
+      function playBGMFromPlaylist(playlist, mode = 'sequential') {
+        if (!playlist || playlist.length === 0) return;
+        stopBGM();
+        bgmPlaylist = playlist.slice();
+        bgmMode = mode;
+        bgmIndex = mode === 'shuffle'
+          ? Math.floor(Math.random() * bgmPlaylist.length)
+          : 0;
+        loadAndPlayCurrentBGM();
+      }
+  
+      function loadAndPlayCurrentBGM() {
+        if (bgmIndex < 0 || bgmIndex >= bgmPlaylist.length) return;
+        const trackName = bgmPlaylist[bgmIndex];
+        const track = createAudio(trackName, false, 0);
+        if (!track) return;
+        bgmCurrent = track;
+  
+        // Fade-in
+        const target = bgmVolume;
+        const step = 0.02;
+        const interval = setInterval(() => {
+          if (!bgmCurrent || bgmCurrent !== track) {
+            clearInterval(interval);
+            return;
+          }
+          if (track.volume < target) {
+            track.volume = Math.min(target, track.volume + step);
+          } else {
+            clearInterval(interval);
+          }
+        }, 60);
+  
+        track.addEventListener('ended', () => {
+          if (bgmCurrent !== track) return;
+          bgmIndex = pickNextIndex();
+          loadAndPlayCurrentBGM();
+        });
+  
+        try {
+          const p = track.play();
+          if (p && typeof p.catch === 'function') p.catch(() => {});
+        } catch (_) {}
+      }
+  
+      function stopBGM() {
+        if (!bgmCurrent) return;
+        try {
+          bgmCurrent.pause();
+          bgmCurrent.currentTime = 0;
+        } catch (_) {}
+        bgmCurrent = null;
+      }
+  
+      function playRosterBGM() { playBGMFromPlaylist(ROSTER_PLAYLIST, 'shuffle'); }
+      function playBattleBGM() { playBGMFromPlaylist(BATTLE_PLAYLIST, 'shuffle'); }
+  
+      // =========================================================
+      // CONTROLES DE VOLUMEN
+      // =========================================================
+      function setSFXVolume(v) {
+        sfxVolume = Math.max(0, Math.min(1, Number(v) || 0));
+        applyVolumeToSfxCache();
+        saveSettings();
+      }
+  
+      function setBGMVolume(v) {
+        bgmVolume = Math.max(0, Math.min(1, Number(v) || 0));
+        try {
+          if (bgmCurrent) bgmCurrent.volume = bgmVolume;
+        } catch (_) {}
+        saveSettings();
+      }
+  
+      function getVolumes() {
+        return { sfx: sfxVolume, bgm: bgmVolume };
       }
   
       function setEnabled(state) {
         enabled = !!state;
+        if (!enabled) {
+          stopBGM();
+          stopClock();
+          stopRoulette();
+        }
       }
   
-      function isEnabled() {
-        return enabled;
-      }
+      function isEnabled() { return enabled; }
   
-      // Desbloquear el AudioContext en la primera interacción del usuario
       function unlock() {
         try {
-          if (!init()) return;
-          resume();
-        } catch (_) { /* silencioso */ }
+          const test = new Audio();
+          test.volume = 0.001;
+          const p = test.play();
+          if (p && typeof p.catch === 'function') p.catch(() => {});
+        } catch (_) {}
       }
   
+      // Init
+      loadSettings();
+      preload();
+  
       return {
-        playHit,
-        playCrit,
-        playHeal,
-        playTick,
-        playReveal,
-        setVolume,
-        setEnabled,
-        isEnabled,
-        unlock
+        playHit, playCritical, playHeal, playShield, playVictory, playRequiem,
+        startClock, stopClock,
+        startRoulette, stopRoulette,
+        playBGM: playBGMFromPlaylist,
+        stopBGM,
+        playRosterBGM,
+        playBattleBGM,
+        setSFXVolume, setBGMVolume, getVolumes,
+        setEnabled, isEnabled, unlock,
+        saveSettings
       };
     })();
+  
+    // Desbloqueo en primer gesto del usuario
+    ['click', 'keydown', 'touchstart'].forEach((evt) => {
+      document.addEventListener(evt, function once() {
+        SoundManager.unlock();
+        document.removeEventListener(evt, once);
+      }, { once: true, passive: true });
+    });
+  
+
+  // Desbloqueo perezoso en el primer gesto del usuario
+  ['click', 'keydown', 'touchstart'].forEach((evt) => {
+    document.addEventListener(evt, function once() {
+      SoundManager.unlock();
+      document.removeEventListener(evt, once);
+    }, { once: true, passive: true });
+  });
+
+  // Exponer globalmente
+  window.JJA_Sound = SoundManager;
   
     // Desbloqueo perezoso: la primera interacción real con el documento
     // habilita el AudioContext en navegadores con autoplay restringido.
@@ -5892,7 +6315,7 @@
     /* =========================================================
        INIT
        ========================================================= */
-       function init() {
+      function init() {
         loadRoster();
         renderCounter();
         renderGallery();
@@ -5902,7 +6325,10 @@
         initModule3();
         initModule4();
         initEventsConfig();
-        bindDualEvents(); // ← NUEVO
+        bindDualEvents();
+        initAudioSettingsPanel(); // ← NUEVO
+    
+        setTimeout(() => SoundManager.playRosterBGM(), 400);
       }
     
       function initEventsConfig() {
